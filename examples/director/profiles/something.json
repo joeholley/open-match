@@ -1,0 +1,29 @@
+{
+    "imagename":"gcr.io/open-match-222408/openmatch-mmf:py3",
+    "name":"somethingv1",
+    "id":"something",
+    "properties":{
+        "pools": [
+            {
+                "name": "somePool",
+                "filters": [
+                    { "name": "silverRanking", "attribute": "mmr.rating", "maxv": "1249", "minv": "0" }
+                ]
+            }
+        ],
+        "rosters": [
+            {
+                "name": "red",
+                "players": [
+                    { "pool": "somePool" }
+                ]
+            },
+            {
+                "name": "blu",
+                "players": [
+                    { "pool": "somePool" }
+                ]
+            }
+        ]
+    }
+}

@@ -1,0 +1,52 @@
+{
+    "imagename":"gcr.io/open-match-222408/openmatch-mmf:py3",
+    "name":"testprofilev1",
+    "id":"testprofile",
+    "properties":{
+        "pools": [
+            {
+                "name": "defaultPool",
+                "filters": [
+                    { "name": "europeWest1ElapsedUnder150", "attribute": "region.europe-west1", "maxv": "150" },
+                    { "name": "silverRanking", "attribute": "mmr.rating", "maxv": "9999", "minv": "1250" }
+                ]
+            },
+            {
+                "name": "supportPool",
+                "filters": [
+                    { "name": "europeWest1ElapsedUnder150", "attribute": "region.europe-west1", "maxv": "150" },
+                    { "name": "silverRanking", "attribute": "mmr.rating", "maxv": "1250", "minv": "950" },
+                    { "name": "supportRole", "attribute": "role.support", "maxv": "2147483647" }
+                ]
+            }
+        ],
+        "rosters": [
+            {
+                "name": "red",
+                "players": [
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" }
+                ]
+            },
+            {
+                "name": "blu",
+                "players": [
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" },
+                    { "pool": "defaultPool" }
+                ]
+            }
+        ]
+    }
+}

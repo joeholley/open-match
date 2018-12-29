@@ -1,0 +1,16 @@
+{
+    "imagename":"gcr.io/open-match-222408/openmatch-mmf:py3",
+    "name":"emptyprofilev1",
+    "id":"emptyprofile",
+    "properties":{
+        "pools": [
+            {
+                "name": "defaultPool",
+                "filters": [
+                    { "name": "europeWest1", "attribute": "region.europe-west1", "minv": "0" }
+                ]
+            }
+        ],
+        "rosters": []
+    }
+}
