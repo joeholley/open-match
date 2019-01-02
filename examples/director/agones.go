@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	logger       = runtime.NewLoggerWithSource("main")
+	logger       = runtime.NewLoggerWithSource("agones")
 	agonesClient = getAgonesClient()
 )
 
@@ -35,11 +35,11 @@ func getAgonesClient() *versioned.Clientset {
 }
 
 // Return the number of ready game servers available to this fleet for allocation
-func checkReadyReplicas(namespace, fleetname string) int32 {
+func checkReadyReplicas(namespace, fleetName string) int32 {
 	// Get a FleetInterface for this namespace
 	fleetInterface := agonesClient.StableV1alpha1().Fleets(namespace)
 	// Get our fleet
-	fleet, err := fleetInterface.Get(fleetname, v1.GetOptions{})
+	fleet, err := fleetInterface.Get(fleetName, v1.GetOptions{})
 	if err != nil {
 		logger.WithError(err).Info("Get fleet failed")
 	}
@@ -48,21 +48,21 @@ func checkReadyReplicas(namespace, fleetname string) int32 {
 }
 
 // Move a replica from ready to allocated and return the GameServerStatus
-func allocateDGS(namespace, fleetname, generatename string) (*v1alpha1.FleetAllocation, error) {
+func allocateDGS(namespace, fleetName, generateName string) (*v1alpha1.FleetAllocation, error) {
 	// var result v1alpha1.GameServerStatus
 
 	// Log the values used in the fleet allocation
 	// logger.WithField("namespace", namespace).Info("namespace for fa")
-	// logger.WithField("generatename", generatename).Info("generatename for fa")
-	// logger.WithField("fleetname", fleetname).Info("fleetname for fa")
+	// logger.WithField("generateName", generateName).Info("generateName for fa")
+	// logger.WithField("fleetName", fleetName).Info("fleetName for fa")
 
 	// Find out how many ready replicas the fleet has - we need at least one
-	readyReplicas := checkReadyReplicas(namespace, fleetname)
+	readyReplicas := checkReadyReplicas(namespace, fleetName)
 	logger.WithField("readyReplicas", readyReplicas).Info("numer of ready replicas")
 
 	// Log and return an error if there are no ready replicas
 	if readyReplicas < 1 {
-		// logger.WithField("fleetname", fleetname).Info("Insufficient ready replicas, cannot create fleet allocation")
+		// logger.WithField("fleetName", fleetName).Info("Insufficient ready replicas, cannot create fleet allocation")
 		return nil, errors.New("Insufficient ready replicas, cannot create fleet allocation")
 	}
 
@@ -72,9 +72,9 @@ func allocateDGS(namespace, fleetname, generatename string) (*v1alpha1.FleetAllo
 	// Define the fleet allocation using the constants set earlier
 	fa := &v1alpha1.FleetAllocation{
 		ObjectMeta: v1.ObjectMeta{
-			GenerateName: generatename, Namespace: namespace,
+			GenerateName: generateName, Namespace: namespace,
 		},
-		Spec: v1alpha1.FleetAllocationSpec{FleetName: fleetname},
+		Spec: v1alpha1.FleetAllocationSpec{FleetName: fleetName},
 	}
 
 	// Create a new fleet allocation
@@ -84,6 +84,8 @@ func allocateDGS(namespace, fleetname, generatename string) (*v1alpha1.FleetAllo
 		logger.WithError(err).Info("Failed to create fleet allocation")
 		return nil, errors.New("Failed to create fleet allocation: " + err.Error())
 	}
+
+	logger.WithField("gsName", newFleetAllocation.Status.GameServer.Name).Info("DGS allocated")
 
 	// Log the GameServer.Staus of the new allocation, then return those values
 	// logger.Info("New GameServer allocated: ", newFleetAllocation.Status.GameServer.Name)

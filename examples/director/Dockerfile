@@ -19,9 +19,12 @@ RUN adduser -D director
 COPY --from=builder \
     /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/director \
     /home/director/director
-COPY --from=builder \
-    /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/profiles/*.json \
-    /home/director/profiles/
+# COPY --from=builder \
+#     /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/director_config.json \
+#     /home/director/
+# COPY --from=builder \
+#     /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/profiles/*.json \
+#     /home/director/profiles/
 
 RUN chown -R director /home/director && \
     chmod o+x /home/director/director

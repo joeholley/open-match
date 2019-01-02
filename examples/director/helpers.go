@@ -10,28 +10,43 @@ import (
 	"net"
 	"os"
 
+	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"google.golang.org/grpc"
 
 	backend "github.com/GoogleCloudPlatform/open-match/internal/pb"
 )
 
-func readProfiles(filenames []string) ([]*backend.MatchObject, error) {
-	var profiles []*backend.MatchObject
-	for _, filename := range filenames {
-		p, err := readProfile(filename)
-		if err != nil {
-			return profiles, fmt.Errorf("Error reading profile \"%s\": %s", filename, err.Error())
-		}
-		profiles = append(profiles, p)
+func mustReadProfiles(cfg *viper.Viper) (emptyProfile *backend.MatchObject, profiles []*backend.MatchObject) {
+	if s := cfg.GetString("starter.profile"); s != "" {
+		emptyProfile = mustReadProfile(s)
+	} else {
+		panic("empty profile filename is empty or not set config")
 	}
-	return profiles, nil
+
+	if ss := cfg.GetStringSlice("profiles"); len(ss) > 0 {
+		for _, s := range ss {
+			p := mustReadProfile(s)
+			profiles = append(profiles, p)
+		}
+	} else {
+		panic("profiles' filenames are not specified in config")
+	}
+	return
+}
+
+func mustReadProfile(filename string) *backend.MatchObject {
+	p, err := readProfile(filename)
+	if err != nil {
+		panic(fmt.Sprintf("error reading profile at \"%s\": %s", filename, err.Error()))
+	}
+	return p
 }
 
 func readProfile(filename string) (*backend.MatchObject, error) {
 	jsonFile, err := os.Open(filename)
 	if err != nil {
-		return nil, errors.New("Failed to open file specified at command line.  Did you forget to specify one?")
+		return nil, fmt.Errorf("failed to open file \"%s\": %s", filename, err.Error())
 	}
 	defer jsonFile.Close()
 
