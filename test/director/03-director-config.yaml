@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: om-director-config
+data:
+  director_config.json: |
+    {
+      "starter": {
+        "profile": "/home/director/profiles/__empty__.json",
+        "minPlayers": 20,
+        "maxWaitSeconds": 1800 
+      },
+        
+      "profiles": [
+        "/home/director/profiles/testprofile.json",
+        "/home/director/profiles/something.json"
+      ],
+        
+      "agones": {
+        "namespace": "default",
+        "fleetName": "udp-server",
+        "generateName": "udp-server-"
+      }
+    }
+  

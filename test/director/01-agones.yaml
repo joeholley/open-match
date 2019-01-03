@@ -15,3 +15,16 @@ spec:
           containers:
           - name: simple-udp
             image: gcr.io/open-match-222408/udp-server:latest
+---
+apiVersion: "stable.agones.dev/v1alpha1"
+kind: FleetAutoscaler
+metadata:
+  name: fleet-autoscaler-example
+spec:
+  fleetName: udp-server
+  policy:
+    type: Buffer
+    buffer:
+      bufferSize: 4
+      minReplicas: 4
+      maxReplicas: 20

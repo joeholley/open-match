@@ -1,0 +1,39 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: om-director
+  labels:
+    app: openmatch
+    component: director
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openmatch
+      component: director
+  template:
+    metadata:
+      labels:
+        app: openmatch
+        component: director
+    spec:
+      containers:
+      - name: director
+        image: gcr.io/open-match-222408/openmatch-director:dev
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: director-config
+          subPath: director_config.json
+          mountPath: /home/director/director_config.json
+          readOnly: true
+        - name: director-profiles
+          mountPath: /home/director/profiles
+          readOnly: true
+      volumes:
+      - name: director-config
+        configMap:
+          name: om-director-config
+      - name: director-profiles
+        configMap:
+          name: om-director-profiles
+      # restartPolicy: Never
