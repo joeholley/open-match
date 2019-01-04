@@ -17,22 +17,23 @@ import (
 	director_config "github.com/GoogleCloudPlatform/open-match/examples/director/config"
 )
 
-// TODO vvv
-const (
-	maxSends          = 2
-	maxMatchesPerSend = 2
-
-	waitBetweenStartups = 2 * time.Second
-	sleepBetweenSends   = 30 * time.Second
-)
+// Allocator is the interface that allocates a game server for a match object
+type Allocator interface {
+	Allocate(match *backend.MatchObject) (string, error)
+}
 
 var (
+	// Starter config
 	minPlayers int64
 	maxWait    time.Duration
 
-	namespace    string
-	fleetName    string
-	generateName string
+	// Profiles debugging config:
+	maxSends            int
+	maxMatchesPerSend   int
+	sleepBetweenSends   = 30 * time.Second
+	waitBetweenStartups = 2 * time.Second
+
+	allocator Allocator
 
 	cfg = viper.New()
 
@@ -53,11 +54,23 @@ func init() {
 		dirLog.WithError(err).Fatal("Unable to load config file")
 	}
 
-	dirLog.WithField("cfg", cfg.AllSettings()).Info("Working with configuration")
+	// Configure open match logging defaults
+	logging.ConfigureLogging(cfg)
 
+	dirLog.WithField("cfg", cfg.AllSettings()).Info("Configuration provided")
+
+	// Starter config
 	minPlayers = cfg.GetInt64("starter.minPlayers")
 	maxWait = time.Duration(cfg.GetInt64("starter.maxWaitSeconds") * int64(time.Second))
 
+	// Profiles debugging
+	maxSends = cfg.GetInt("debug.maxSends")
+	maxMatchesPerSend = cfg.GetInt("debug.maxMatchesPerSend")
+	sleepBetweenSends = time.Duration(cfg.GetInt64("debug.sleepBetweenSendsSeconds") * int64(time.Second))
+	waitBetweenStartups = time.Duration(cfg.GetInt64("debug.waitBetweenStartupsSeconds") * int64(time.Second))
+
+	// Agones
+	var namespace, fleetName, generateName string
 	if namespace = cfg.GetString("agones.namespace"); namespace == "" {
 		dirLog.Fatalf("Incomplete Agones configuration: missing \"agones.namespace\"")
 	}
@@ -67,16 +80,31 @@ func init() {
 	if generateName = cfg.GetString("agones.generateName"); generateName == "" {
 		dirLog.Fatalf("Incomplete Agones configuration: missing \"agones.generateName\"")
 	}
+	allocator, err = NewAgonesAllocator(namespace, fleetName, generateName, dirLog)
+	if err != nil {
+		dirLog.WithError(err).Fatal("Could not create Agones allocator")
+	}
 
-	// Configure open match logging defaults
-	logging.ConfigureLogging(cfg)
+	dirLog.WithFields(log.Fields{
+		"minPlayers": minPlayers,
+		"maxWait":    maxWait,
+
+		"maxSends":            maxSends,
+		"maxMatchesPerSend":   maxMatchesPerSend,
+		"sleepBetweenSends":   sleepBetweenSends,
+		"waitBetweenStartups": waitBetweenStartups,
+
+		"namespace":    namespace,
+		"fleetName":    fleetName,
+		"generateName": generateName,
+	}).Debug("Parameters read from configuration")
 }
 
 func main() {
-	emptyProfile, profiles := mustReadProfiles(cfg)
+	starterProfile, profiles := mustReadProfiles(cfg)
 
 	// Sleep until there's enough players to submit real profiles
-	_, err = requirePlayers(emptyProfile, minPlayers, maxWait)
+	err = waitForPlayers(starterProfile, minPlayers, maxWait)
 	if err != nil {
 		dirLog.WithError(err).Fatal("Error waiting for players")
 	}
@@ -104,29 +132,26 @@ func main() {
 	dirLog.Info("Exiting")
 }
 
-// Sends empty profile in order to get back some stats with total number of players in Redis
-func requirePlayers(profile *backend.MatchObject, threshold int64, timeout time.Duration) (bool, error) {
+// Sends provided "starter" profile and receives match objects
+// until number of players in "defaultPool" passes threshold value (or time is over)
+func waitForPlayers(profile *backend.MatchObject, minPlayers int64, maxWait time.Duration) error {
 	beAPI, err := getBackendAPIClient()
 	if err != nil {
-		return false, errors.New("Error creating Backend client: " + err.Error())
+		return errors.New("error creating backend client: " + err.Error())
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), maxWait)
 	defer cancel()
 
 	stream, err := beAPI.ListMatches(ctx, profile)
 	if err != nil {
-		return false, errors.New("Error opening ListMatches stream: " + err.Error())
+		return errors.New("error opening matches stream: " + err.Error())
 	}
 
-	var enough bool
 	for {
 		match, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
-			return false, errors.New("error reading stream for ListMatches(_): " + err.Error())
+			return errors.New("error reading matches stream: " + err.Error())
 		}
 
 		dirLog.Debugf("match.Pools = %+v", match.Pools)
@@ -139,16 +164,11 @@ func requirePlayers(profile *backend.MatchObject, threshold int64, timeout time.
 				}
 			}
 		}
-		if defaultPoolPlayersCount > threshold {
-			enough = true
-			err := stream.CloseSend()
-			if err != nil {
-				return enough, errors.New("error closing stream for ListMatches(_): " + err.Error())
-			}
-			break
+		if defaultPoolPlayersCount > minPlayers {
+			_ = stream.CloseSend()
+			return nil
 		}
 	}
-	return enough, nil
 }
 
 func sendProfile(profile *backend.MatchObject, maxSends int, maxMatchesPerSend int) {
@@ -159,37 +179,32 @@ func sendProfile(profile *backend.MatchObject, maxSends int, maxMatchesPerSend i
 
 	beAPI, err := getBackendAPIClient()
 	if err != nil {
-		profLog.WithError(err).Error("Error creating Backend client")
+		profLog.WithError(err).Error("error creating Backend client")
 		return
 	}
 
-	for i := 0; i < maxSends; i++ {
-		profLog.Debug("calling ListMatches...")
+	for i := 0; i < maxSends || maxSends <= 0; i++ {
+		profLog.Debug("Sending profile...")
 		sendLog := profLog.WithField("send", i)
 
 		stream, err := beAPI.ListMatches(context.Background(), profile)
 		if err != nil {
-			sendLog.WithError(err).Error("Error opening ListMatches stream")
+			sendLog.WithError(err).Error("error opening matches stream")
 			return
 		}
 
-		j := -1
-		for {
-			j++
+		for j := 0; ; j++ {
 			recvLog := sendLog.WithField("recv", j)
-			if j >= maxMatchesPerSend {
+			if j >= maxMatchesPerSend && maxMatchesPerSend > 0 {
 				recvLog.Debug("Reached max num of match receive attempts, closing stream...")
 				stream.CloseSend()
 				break
 			}
 
-			recvLog.Debug("Calling stream.Recv()...")
 			match, err := stream.Recv()
 			if err == io.EOF {
-				sendLog.Debug("ListMatches stream is closed")
 				break
 			}
-
 			if err != nil {
 				recvLog.WithError(err).Error("Error receiving match")
 				stream.CloseSend()
@@ -203,7 +218,6 @@ func sendProfile(profile *backend.MatchObject, maxSends int, maxMatchesPerSend i
 			}
 
 			matchLog := recvLog.WithField("match", match.Id)
-			matchLog.Debug("Received")
 
 			if !gjson.Valid(string(match.Properties)) {
 				matchLog.Error("Invalid properties json")
@@ -212,55 +226,45 @@ func sendProfile(profile *backend.MatchObject, maxSends int, maxMatchesPerSend i
 			}
 
 			var connstring string
-			connstring, err = allocate(match)
+			connstring, err = allocator.Allocate(match)
 			if err != nil {
 				matchLog.WithError(err).Error("error allocating match")
 				stream.CloseSend()
 				break
 			}
 
-			// Get players from the json properties.roster field
-			players := make([]string, 0)
-			result := gjson.Get(match.Properties, "properties.rosters")
-			result.ForEach(func(_, teamRoster gjson.Result) bool {
-				teamPlayers := teamRoster.Get("players")
-				teamPlayers.ForEach(func(_, teamPlayer gjson.Result) bool {
-					player := teamPlayer.Get("id")
-					players = append(players, player.String())
-					return true
-				})
-				return true // keep iterating
-			})
-
-			matchLog.WithFields(log.Fields{
-				"players":    players,
-				"connstring": connstring,
-			}).Info("Assigning players to DGS...")
+			players := getPlayers(match)
+			fields := log.Fields{"players": players, "connstring": connstring}
 
 			assign := &backend.Assignments{Rosters: match.Rosters, Assignment: connstring}
 			_, err = beAPI.CreateAssignments(context.Background(), assign)
 			if err != nil {
-				matchLog.WithError(err).Error("Error creating assignments")
+				matchLog.WithFields(fields).WithError(err).Error("Error creating assignments")
 				break
+			} else {
+				matchLog.WithFields(fields).Infof("Assigned %d players to %s", len(players), connstring)
 			}
 		}
 
-		if i < maxSends-1 {
-			sendLog.Println("Sleeping...")
+		if i < maxSends-1 || maxSends <= 0 {
+			sendLog.Debug("Sleeping...")
 			time.Sleep(sleepBetweenSends)
 		}
 	}
 }
 
-// Tries to allocate DGS and distributes matchmaking results to it
-func allocate(match *backend.MatchObject) (string, error) {
-	fa, err := allocateDGS(namespace, fleetName, generateName)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO distribute the results to DGS
-
-	connstring := getConnectionString(fa)
-	return connstring, nil
+// Gets players from the json properties.roster field
+func getPlayers(match *backend.MatchObject) []string {
+	players := make([]string, 0)
+	result := gjson.Get(match.Properties, "properties.rosters")
+	result.ForEach(func(_, teamRoster gjson.Result) bool {
+		teamPlayers := teamRoster.Get("players")
+		teamPlayers.ForEach(func(_, teamPlayer gjson.Result) bool {
+			player := teamPlayer.Get("id")
+			players = append(players, player.String())
+			return true
+		})
+		return true // keep iterating
+	})
+	return players
 }

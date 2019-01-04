@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 
@@ -17,11 +16,11 @@ import (
 	backend "github.com/GoogleCloudPlatform/open-match/internal/pb"
 )
 
-func mustReadProfiles(cfg *viper.Viper) (emptyProfile *backend.MatchObject, profiles []*backend.MatchObject) {
+func mustReadProfiles(cfg *viper.Viper) (starterProfile *backend.MatchObject, profiles []*backend.MatchObject) {
 	if s := cfg.GetString("starter.profile"); s != "" {
-		emptyProfile = mustReadProfile(s)
+		starterProfile = mustReadProfile(s)
 	} else {
-		panic("empty profile filename is empty or not set config")
+		panic("starter profile filename is empty or not set config")
 	}
 
 	if ss := cfg.GetStringSlice("profiles"); len(ss) > 0 {
@@ -54,7 +53,7 @@ func readProfile(filename string) (*backend.MatchObject, error) {
 	jsonData, _ := ioutil.ReadAll(jsonFile) // this reads as a byte array
 	buffer := new(bytes.Buffer)             // convert byte array to buffer to send to json.Compact()
 	if err := json.Compact(buffer, jsonData); err != nil {
-		log.Println(err)
+		dirLog.WithError(err).WithField("filename", filename).Warn("error compacting profile json")
 	}
 
 	jsonProfile := buffer.String()
@@ -78,11 +77,13 @@ func getBackendAPIClient() (backend.BackendClient, error) {
 		return nil, errors.New("lookup failed: " + err.Error())
 	}
 
-	beAPIConn, err := grpc.Dial(addrs[0]+":50505", grpc.WithInsecure())
+	addr := fmt.Sprintf("%s:50505", addrs[0])
+
+	beAPIConn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
 		return nil, errors.New("failed to connect: " + err.Error())
 	}
 	beAPI := backend.NewBackendClient(beAPIConn)
-	log.Println("API client connected to", addrs[0]+":50505")
+	dirLog.Debugf("API client connected to %s", addr)
 	return beAPI, nil
 }

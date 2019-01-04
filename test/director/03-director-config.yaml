@@ -1,3 +1,4 @@
+#!/usr/bin/env kubectl apply -f
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,6 +6,12 @@ metadata:
 data:
   director_config.json: |
     {
+      "logging": {
+        "format": "text",
+        "level": "debug",
+        "source": false
+      },
+
       "starter": {
         "profile": "/home/director/profiles/__empty__.json",
         "minPlayers": 20,
@@ -15,6 +22,13 @@ data:
         "/home/director/profiles/testprofile.json",
         "/home/director/profiles/something.json"
       ],
+
+      "debug": {
+        "maxSends": 1,
+        "maxMatchesPerSend": 3,
+        "sleepBetweenSendsSeconds": 30,
+        "waitBetweenStartupsSeconds": 2
+      },
         
       "agones": {
         "namespace": "default",

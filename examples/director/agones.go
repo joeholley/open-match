@@ -6,86 +6,108 @@ import (
 
 	"agones.dev/agones/pkg/apis/stable/v1alpha1"
 	"agones.dev/agones/pkg/client/clientset/versioned"
-	"agones.dev/agones/pkg/util/runtime" // for the logger
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
+
+	backend "github.com/GoogleCloudPlatform/open-match/internal/pb"
 )
 
-var (
-	logger       = runtime.NewLoggerWithSource("agones")
-	agonesClient = getAgonesClient()
-)
+// AgonesAllocator allocates game servers in Agones fleet
+type AgonesAllocator struct {
+	agonesClient *versioned.Clientset
+
+	namespace    string
+	fleetName    string
+	generateName string
+
+	logger *logrus.Entry
+}
+
+// NewAgonesAllocator creates new AgonesAllocator with in cluster k8s config
+func NewAgonesAllocator(namespace, fleetName, generateName string, logger *logrus.Entry) (*AgonesAllocator, error) {
+	agonesClient, err := getAgonesClient()
+	if err != nil {
+		return nil, errors.New("Could not create Agones allocator: " + err.Error())
+	}
+
+	a := &AgonesAllocator{
+		agonesClient: agonesClient,
+
+		namespace:    namespace,
+		fleetName:    fleetName,
+		generateName: generateName,
+
+		logger: logger.WithFields(logrus.Fields{
+			"source":    "agones",
+			"namespace": namespace,
+			"fleetname": fleetName,
+		}),
+	}
+	return a, nil
+}
 
 // Set up our client which we will use to call the API
-func getAgonesClient() *versioned.Clientset {
+func getAgonesClient() (*versioned.Clientset, error) {
 	// Create the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		logger.WithError(err).Fatal("Could not create in cluster config")
+		return nil, errors.New("Could not create in cluster config: " + err.Error())
 	}
 
 	// Access to the Agones resources through the Agones Clientset
 	agonesClient, err := versioned.NewForConfig(config)
 	if err != nil {
-		logger.WithError(err).Fatal("Could not create the agones api clientset")
-	} else {
-		logger.Info("Created the agones api clientset")
+		return nil, errors.New("Could not create the agones api clientset: " + err.Error())
 	}
-	return agonesClient
+	return agonesClient, nil
 }
 
-// Return the number of ready game servers available to this fleet for allocation
-func checkReadyReplicas(namespace, fleetName string) int32 {
-	// Get a FleetInterface for this namespace
-	fleetInterface := agonesClient.StableV1alpha1().Fleets(namespace)
-	// Get our fleet
-	fleet, err := fleetInterface.Get(fleetName, v1.GetOptions{})
+// Allocate allocates a game server in a fleet, distributes match object details to it,
+// and returns a connection string or error
+func (a *AgonesAllocator) Allocate(match *backend.MatchObject) (string, error) {
+	fa, err := a.allocateFleet()
 	if err != nil {
-		logger.WithError(err).Info("Get fleet failed")
+		return "", err
 	}
 
-	return fleet.Status.ReadyReplicas
+	// TODO distribute the results to DGS
+
+	dgs := fa.Status.GameServer.Status
+	connstring := fmt.Sprintf("%s:%d", dgs.Address, dgs.Ports[0].Port)
+	return connstring, nil
 }
 
 // Move a replica from ready to allocated and return the GameServerStatus
-func allocateDGS(namespace, fleetName, generateName string) (*v1alpha1.FleetAllocation, error) {
-	// var result v1alpha1.GameServerStatus
-
-	// Log the values used in the fleet allocation
-	// logger.WithField("namespace", namespace).Info("namespace for fa")
-	// logger.WithField("generateName", generateName).Info("generateName for fa")
-	// logger.WithField("fleetName", fleetName).Info("fleetName for fa")
-
+func (a *AgonesAllocator) allocateFleet() (*v1alpha1.FleetAllocation, error) {
 	// Find out how many ready replicas the fleet has - we need at least one
-	readyReplicas := checkReadyReplicas(namespace, fleetName)
-	logger.WithField("readyReplicas", readyReplicas).Info("numer of ready replicas")
+	readyReplicas := a.checkReadyReplicas()
+	a.logger.WithField("readyReplicas", readyReplicas).Info("numer of ready replicas")
 
 	// Log and return an error if there are no ready replicas
 	if readyReplicas < 1 {
-		// logger.WithField("fleetName", fleetName).Info("Insufficient ready replicas, cannot create fleet allocation")
 		return nil, errors.New("Insufficient ready replicas, cannot create fleet allocation")
 	}
 
 	// Get a FleetAllocationInterface for this namespace
-	fleetAllocationInterface := agonesClient.StableV1alpha1().FleetAllocations(namespace)
+	fai := a.agonesClient.StableV1alpha1().FleetAllocations(a.namespace)
 
 	// Define the fleet allocation using the constants set earlier
 	fa := &v1alpha1.FleetAllocation{
 		ObjectMeta: v1.ObjectMeta{
-			GenerateName: generateName, Namespace: namespace,
+			GenerateName: a.generateName, Namespace: a.namespace,
 		},
-		Spec: v1alpha1.FleetAllocationSpec{FleetName: fleetName},
+		Spec: v1alpha1.FleetAllocationSpec{FleetName: a.fleetName},
 	}
 
 	// Create a new fleet allocation
-	newFleetAllocation, err := fleetAllocationInterface.Create(fa)
+	newFleetAllocation, err := fai.Create(fa)
 	if err != nil {
 		// Log and return the error if the call to Create fails
-		logger.WithError(err).Info("Failed to create fleet allocation")
 		return nil, errors.New("Failed to create fleet allocation: " + err.Error())
 	}
 
-	logger.WithField("gsName", newFleetAllocation.Status.GameServer.Name).Info("DGS allocated")
+	a.logger.WithField("gsName", newFleetAllocation.Status.GameServer.Name).Info("DGS allocated")
 
 	// Log the GameServer.Staus of the new allocation, then return those values
 	// logger.Info("New GameServer allocated: ", newFleetAllocation.Status.GameServer.Name)
@@ -93,7 +115,15 @@ func allocateDGS(namespace, fleetName, generateName string) (*v1alpha1.FleetAllo
 	return newFleetAllocation, nil
 }
 
-func getConnectionString(fa *v1alpha1.FleetAllocation) string {
-	dgs := fa.Status.GameServer.Status
-	return fmt.Sprintf("%s:%d", dgs.Address, dgs.Ports[0].Port)
+// Return the number of ready game servers available to this fleet for allocation
+func (a *AgonesAllocator) checkReadyReplicas() int32 {
+	// Get a FleetInterface for this namespace
+	fleetInterface := a.agonesClient.StableV1alpha1().Fleets(a.namespace)
+	// Get our fleet
+	fleet, err := fleetInterface.Get(a.fleetName, v1.GetOptions{})
+	if err != nil {
+		a.logger.WithError(err).Error("Get fleet failed")
+		return -1
+	}
+	return fleet.Status.ReadyReplicas
 }

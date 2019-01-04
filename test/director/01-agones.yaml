@@ -1,3 +1,4 @@
+#!/usr/bin/env kubectl apply -f
 apiVersion: "stable.agones.dev/v1alpha1"
 kind: Fleet
 metadata:
