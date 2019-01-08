@@ -70,20 +70,20 @@ func readProfile(filename string) (*backend.MatchObject, error) {
 	return pbProfile, nil
 }
 
-func getBackendAPIClient() (backend.BackendClient, error) {
+func getBackendAPIClient() (*grpc.ClientConn, backend.BackendClient, error) {
 	// Connect gRPC client
 	addrs, err := net.LookupHost("om-backendapi")
 	if err != nil {
-		return nil, errors.New("lookup failed: " + err.Error())
+		return nil, nil, errors.New("lookup failed: " + err.Error())
 	}
 
 	addr := fmt.Sprintf("%s:50505", addrs[0])
 
 	beAPIConn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
-		return nil, errors.New("failed to connect: " + err.Error())
+		return nil, nil, errors.New("failed to connect: " + err.Error())
 	}
 	beAPI := backend.NewBackendClient(beAPIConn)
 	dirLog.Debugf("API client connected to %s", addr)
-	return beAPI, nil
+	return beAPIConn, beAPI, nil
 }
