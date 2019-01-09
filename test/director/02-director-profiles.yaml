@@ -14,7 +14,7 @@ data:
           {
             "name": "defaultPool",
             "filters": [
-              { "name": "europeWest1", "attribute": "region.europe-west1", "minv": "0" }
+              { "name": "demoFrontendClients", "attribute": "mode.demo", "minv": "0" }
             ]
           }
         ],
@@ -84,9 +84,9 @@ data:
       "properties": {
         "pools": [
           {
-            "name": "somePool",
+            "name": "demoPool",
             "filters": [
-              { "name": "silverRanking", "attribute": "mmr.rating", "maxv": "1249", "minv": "0" }
+              { "name": "demoFrontendClients", "attribute": "mode.demo", "minv": "0" }
             ]
           }
         ],
@@ -94,13 +94,13 @@ data:
           {
             "name": "red",
             "players": [
-              { "pool": "somePool" }
+              { "pool": "demoPool" }
             ]
           },
           {
             "name": "blu",
             "players": [
-              { "pool": "somePool" }
+              { "pool": "demoPool" }
             ]
           }
         ]

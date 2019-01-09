@@ -181,6 +181,7 @@ func Generate() (string, map[string]interface{}) {
 	properties["mode"] = map[string]int{
 		"ctf":          now,
 		"battleroyale": now,
+		"demo":         now,
 	}
 
 	return id, properties
