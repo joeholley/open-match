@@ -14,7 +14,7 @@ data:
 
       "starter": {
         "profile": "/home/director/profiles/__empty__.json",
-        "minPlayers": 20,
+        "minPlayers": 2,
         "maxWaitSeconds": 1800 
       },
         

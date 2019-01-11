@@ -166,7 +166,7 @@ func waitForPlayers(profile *backend.MatchObject, minPlayers int64, maxWait time
 				}
 			}
 		}
-		if defaultPoolPlayersCount > minPlayers {
+		if defaultPoolPlayersCount >= minPlayers {
 			_ = stream.CloseSend()
 			return nil
 		}
