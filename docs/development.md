@@ -11,11 +11,11 @@ Note: Although Google Cloud Platform includes some free usage, you may incur cha
 **NOTE**: Before starting with this guide, you'll need to update all the URIs from the tutorial's gcr.io container image registry with the URI for your own image registry. If you are using the gcr.io registry on GCP, the default URI is `gcr.io/<PROJECT_NAME>`.  Here's an example command in Linux to do the replacement for you this (replace YOUR_REGISTRY_URI with your URI, this should be run from the repository root directory):
 ```
 # Linux
-egrep -lR 'gcr.io/matchmaker-dev-201405' . | xargs sed -i -e 's|gcr.io/matchmaker-dev-201405|YOUR_REGISTRY_URI|g'
+egrep -lR 'open-match-public-images' . | xargs sed -i -e 's|open-match-public-images|<PROJECT_NAME>|g'
 ```
 ```
 # Mac OS, you can delete the .backup files after if all looks good 
-egrep -lR 'gcr.io/matchmaker-dev-201405' . | xargs sed -i'.backup' -e 's|gcr.io/matchmaker-dev-201405|YOUR_REGISTRY_URI|g'
+egrep -lR 'open-match-public-images' . | xargs sed -i'.backup' -e 's|open-match-public-images|<PROJECT_NAME>|g'
 ```
 
 ## Example of building using Google Cloud Builder
@@ -26,7 +26,7 @@ The [Quickstart for Docker](https://cloud.google.com/cloud-build/docs/quickstart
 * In Linux, you can run the following one-line bash script to compile all the images for the first time, and push them to your gcr.io registry. You must enable the [Container Registry API](https://console.cloud.google.com/flows/enableapi?apiid=containerregistry.googleapis.com) first.
     ```
     # First, build the 'base' image.  Some other images depend on this so it must complete first.
-    gcloud build submit --config cloudbuild_base.yaml
+    gcloud builds submit --config cloudbuild_base.yaml
     # Build all other images. 
     for dfile in $(find . -name "Dockerfile" -iregex "./\(cmd\|test\|examples\)/.*"); do cd $(dirname ${dfile}); gcloud builds submit --config cloudbuild.yaml & cd -; done
     ```
@@ -42,15 +42,15 @@ The [Quickstart for Docker](https://cloud.google.com/cloud-build/docs/quickstart
     (your registry name will be different)
     ```
     NAME
-    gcr.io/matchmaker-dev-201405/openmatch-backendapi
-    gcr.io/matchmaker-dev-201405/openmatch-devbase
-    gcr.io/matchmaker-dev-201405/openmatch-evaluator
-    gcr.io/matchmaker-dev-201405/openmatch-frontendapi
-    gcr.io/matchmaker-dev-201405/openmatch-mmf-golang-manual-simple
-    gcr.io/matchmaker-dev-201405/openmatch-mmf-php-mmlogic-simple
-    gcr.io/matchmaker-dev-201405/openmatch-mmf-py3-mmlogic-simple
-    gcr.io/matchmaker-dev-201405/openmatch-mmforc
-    gcr.io/matchmaker-dev-201405/openmatch-mmlogicapi
+    gcr.io/open-match-public-images/openmatch-backendapi
+    gcr.io/open-match-public-images/openmatch-devbase
+    gcr.io/open-match-public-images/openmatch-evaluator
+    gcr.io/open-match-public-images/openmatch-frontendapi
+    gcr.io/open-match-public-images/openmatch-mmf-golang-manual-simple
+    gcr.io/open-match-public-images/openmatch-mmf-php-mmlogic-simple
+    gcr.io/open-match-public-images/openmatch-mmf-py3-mmlogic-simple
+    gcr.io/open-match-public-images/openmatch-mmforc
+    gcr.io/open-match-public-images/openmatch-mmlogicapi
     ```
 ## Example of starting a GKE cluster
 
@@ -68,7 +68,7 @@ gcloud compute zones list
 
 ## Configuration
 
-Currently, each component reads a local config file `matchmaker_config.json`, and all components assume they have the same configuration (if you would like to help us design the replacement config solution, please join the [discussion](https://github.com/GoogleCloudPlatform/open-match/issues/42).  To this end, there is a single centralized config file located in the `<REPO_ROOT>/config/` which is symlinked to each component's subdirectory for convenience when building locally.
+Currently, each component reads a local config file `matchmaker_config.json`, and all components assume they have the same configuration (if you would like to help us design the replacement config solution, please join the [discussion](https://github.com/GoogleCloudPlatform/open-match/issues/42).  To this end, there is a single centralized config file located in the `<REPO_ROOT>/config/` which is symlinked to each component's subdirectory for convenience when building locally.  Note: [there is an issue with symlinks on Windows](../issues/57).
 
 ## Running Open Match in a development environment
 
@@ -88,8 +88,8 @@ The rest of this guide assumes you have a cluster (example is using GKE, but wor
     kubectl apply -f frontendapi_service.json
     kubectl apply -f mmforc_deployment.json
     kubectl apply -f mmforc_serviceaccount.json
-    kubectl apply -f mmlogic_deployment.json
-    kubectl apply -f mmlogic_service.json
+    kubectl apply -f mmlogicapi_deployment.json
+    kubectl apply -f mmlogicapi_service.json
     ```
 * [optional, but recommended] Configure the OpenCensus metrics services:
     ```
@@ -174,7 +174,7 @@ statefulset.apps/prometheus-prometheus   1         1         9m
 
 In the end: *caveat emptor*. These tools all work and are quite small, and as such are fairly easy for developers to understand by looking at the code and logging output. They are provided as-is just as a reference point of how to begin experimenting with Open Match integrations.  
 
-* `examples/frontendclient` is a fake client for the Frontend API.  It pretends to be gropu of real game clients connecting to Open Match and requests a game, then dumps out the results it receives. **Note**: If you're using the rest of these test programs, you're probably using the Backend Client below.  The default profiles that sends to the backend look for way more than one player, so if you want to see meaningful results from running this Frontend Client, you're going to need to generate a bunch of fake players using the client load simulation tool at the same time. Otherwise, expect to wait until it times out as your matchmaker never has enough players to make a successful match.
+* `examples/frontendclient` is a fake client for the Frontend API.  It pretends to be group of real game clients connecting to Open Match.  It requests a game, then dumps out the results each player receives to the screen until you press the enter key. **Note**: If you're using the rest of these test programs, you're probably using the Backend Client below.  The default profiles that command sends to the backend look for many more than one player, so if you want to see meaningful results from running this Frontend Client, you're going to need to generate a bunch of fake players using the client load simulation tool at the same time. Otherwise, expect to wait until it times out as your matchmaker never has enough players to make a successful match.
 * `examples/backendclient` is a fake client for the Backend API.  It pretends to be a dedicated game server backend connecting to openmatch and sending in a match profile to fill.  Once it receives a match object with a roster, it will also issue a call to assign the player IDs, and gives an example connection string.  If it never seems to get a match, make sure you're adding players to the pool using the other two tools. Note: building this image requires that you first build the 'base' dev image (look for `cloudbuild_base.yaml` and `Dockerfile.base` in the root directory) and then update the first step to point to that image in your registry.  This will be simplified in a future release.  **Note**: If you run this by itself, expect it to wait about 30 seconds, then return a result of 'insufficient players' and exit - this is working as intended.  Use the client load simulation tool below to add players to the pool or you'll never be able to make a successful match. 
 * `test/cmd/client` is a (VERY) basic client load simulation tool.  It does **not** test the Frontend API - in fact, it ignores it and writes players directly to state storage on its own.  It doesn't do anything but loop endlessly, writing players into state storage so you can test your backend integration, and run your custom MMFs and Evaluators (which are only triggered when there are players in the pool). 
 

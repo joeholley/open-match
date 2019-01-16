@@ -1,4 +1,5 @@
 {
+    "debug": true,
     "logging":{
         "level": "debug",
         "format": "text",
@@ -8,7 +9,7 @@
         "backend": {
             "hostname": "om-backendapi",
             "port": 50505,
-            "timeout": 30
+            "timeout": 90
         },
         "frontend": {
             "hostname": "om-frontendapi",
@@ -56,12 +57,12 @@
     },
     "defaultImages": {
         "evaluator": {
-            "name": "gcr.io/matchmaker-dev-201405/openmatch-evaluator",
+            "name": "gcr.io/open-match-public-images/openmatch-evaluator",
             "tag": "dev"
         },
         "mmf": {
-            "name": "gcr.io/matchmaker-dev-201405/openmatch-mmf-py3-mmlogic-simple",
-            "tag": "py3"
+            "name": "gcr.io/open-match-public-images/openmatch-mmf-py3-mmlogic-simple",
+            "tag": "dev"
         }
     },
     "redis": {
@@ -77,7 +78,11 @@
         },
         "results": {
             "pageSize": 10000
-        }
+        },
+        "expirations": {
+            "player": 43200,
+            "matchobject":43200 
+            }
     },
     "jsonkeys": {
         "mmfImage": "imagename",

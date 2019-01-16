@@ -107,7 +107,7 @@ func (s *frontendAPI) CreatePlayer(ctx context.Context, group *frontend.Player) 
 	fnCtx, _ := tag.New(ctx, tag.Insert(KeyMethod, funcName))
 
 	// Write group
-	err := redispb.MarshalToRedis(ctx, s.pool, group)
+	err := redispb.MarshalToRedis(ctx, s.pool, group, s.cfg.GetInt("redis.expirations.player"))
 	if err != nil {
 		feLog.WithFields(log.Fields{
 			"error":     err.Error(),
@@ -180,8 +180,8 @@ func (s *frontendAPI) deletePlayer(id string) {
 	go playerindices.DeleteMeta(context.Background(), s.pool, id)
 }
 
-// GetPlayer is this service's implementation of the GetPlayer gRPC method defined in frontend.proto
-func (s *frontendAPI) GetPlayer(p *frontend.Player, assignmentStream frontend.Frontend_GetPlayerServer) error {
+// GetUpdates is this service's implementation of the GetUpdates gRPC method defined in frontend.proto
+func (s *frontendAPI) GetUpdates(p *frontend.Player, assignmentStream frontend.Frontend_GetUpdatesServer) error {
 	// Get cancellable context
 	ctx, cancel := context.WithCancel(assignmentStream.Context())
 	defer cancel()
@@ -217,6 +217,9 @@ func (s *frontendAPI) GetPlayer(p *frontend.Player, assignmentStream frontend.Fr
 			errTag, _ := tag.NewKey("errtype")
 			fnCtx, _ := tag.New(ctx, tag.Insert(errTag, "watch_timeout"))
 			stats.Record(fnCtx, FeGrpcErrors.M(1))
+			//TODO: we could generate a frontend.player message with an error
+			//field and stream it to the client before throwing the error here
+			//if we wanted to send more useful client retry information
 			return err
 
 		case a := <-watchChan:
