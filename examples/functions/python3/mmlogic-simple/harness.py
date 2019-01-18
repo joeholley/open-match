@@ -69,6 +69,10 @@ with  grpc.insecure_channel(api_conn_info) as channel:
         if os.environ["DEBUG"]:
             print("\n'%s': count %06d | elapsed %0.3f" % (empty_pool.name, len(player_pools[empty_pool.name]),timer() - start))
 
+    num_players_total = 0
+    for _, pool in player_pools.items():
+        num_players_total += len(pool)
+
     #################################################################
     # Step 5 - Run custom matchmaking logic to try to find a match
     # This is in the file mmf.py
@@ -105,9 +109,6 @@ with  grpc.insecure_channel(api_conn_info) as channel:
         pp.pprint(mo)
 
     # Return error when there are no players in the pools
-    num_players_total = 0
-    for _, pool in player_pools.items():
-        num_players_total += len(pool)
     if num_players_total == 0:
         if cfg['debug']:
             print("All player pools are empty, writing to error to skip the evaluator")
