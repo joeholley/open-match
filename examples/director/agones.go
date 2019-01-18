@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -69,12 +70,23 @@ func getAgonesClient() (*versioned.Clientset, error) {
 // Allocate allocates a game server in a fleet, distributes match object details to it,
 // and returns a connection string or error
 func (a *AgonesAllocator) Allocate(match *backend.MatchObject) (string, error) {
-	fa, err := a.allocateFleet()
-	if err != nil {
-		return "", err
+
+	// Define the fleet allocation using the constants set earlier
+	faReq := &v1alpha1.FleetAllocation{
+		ObjectMeta: v1.ObjectMeta{
+			GenerateName: a.generateName, Namespace: a.namespace,
+		},
+		Spec: v1alpha1.FleetAllocationSpec{
+			FleetName: a.fleetName,
+			MetaPatch: a.getAllocationMeta(match),
+		},
 	}
 
-	// TODO distribute the results to DGS
+	// Create a new fleet allocation
+	fa, err := a.agonesClient.StableV1alpha1().FleetAllocations(a.namespace).Create(faReq)
+	if err != nil {
+		return "", errors.New("Failed to create fleet allocation: " + err.Error())
+	}
 
 	dgs := fa.Status.GameServer.Status
 	connstring := fmt.Sprintf("%s:%d", dgs.Address, dgs.Ports[0].Port)
@@ -88,41 +100,29 @@ func (a *AgonesAllocator) Allocate(match *backend.MatchObject) (string, error) {
 	return connstring, nil
 }
 
-// Move a replica from ready to allocated and return the FleetAllocation
-func (a *AgonesAllocator) allocateFleet() (*v1alpha1.FleetAllocation, error) {
-	// TODO doest it really make sense to check the number of replicas before trying to allocate one?
-	// ----------------------------------------------------
-	// Find out how many ready replicas the fleet has - we need at least one
-	// readyReplicas := a.checkReadyReplicas()
-	// a.logger.WithField("readyReplicas", readyReplicas).Debug("numer of ready replicas")
-	// if readyReplicas < 1 {
-	// 	return nil, errors.New("Insufficient ready replicas, cannot create fleet allocation")
-	// }
-
-	// Define the fleet allocation using the constants set earlier
-	faReq := &v1alpha1.FleetAllocation{
-		ObjectMeta: v1.ObjectMeta{
-			GenerateName: a.generateName, Namespace: a.namespace,
-		},
-		Spec: v1alpha1.FleetAllocationSpec{FleetName: a.fleetName},
+func (a *AgonesAllocator) getAllocationMeta(match *backend.MatchObject) v1alpha1.MetaPatch {
+	labels := map[string]string{
+		"openmatch/match": match.Id,
 	}
 
-	// Create a new fleet allocation
-	fa, err := a.agonesClient.StableV1alpha1().FleetAllocations(a.namespace).Create(faReq)
-	if err != nil {
-		return nil, errors.New("Failed to create fleet allocation: " + err.Error())
-	}
-	return fa, nil
-}
+	annotations := map[string]string{}
 
-// Return the number of ready game servers available to this fleet for allocation
-func (a *AgonesAllocator) checkReadyReplicas() int32 {
-	fleet, err := a.agonesClient.StableV1alpha1().Fleets(a.namespace).Get(a.fleetName, v1.GetOptions{})
-	if err != nil {
-		a.logger.WithError(err).Error("Get fleet failed")
-		return -1
+	if pools, err := json.Marshal(match.Pools); err == nil {
+		annotations["openmatch/pools"] = string(pools)
+	} else {
+		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Pools to attach to FleetAllocation metadata")
 	}
-	return fleet.Status.ReadyReplicas
+
+	if rosters, err := json.Marshal(match.Rosters); err == nil {
+		annotations["openmatch/rosters"] = string(rosters)
+	} else {
+		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Rosters to attach to FleetAllocation metadata")
+	}
+
+	return v1alpha1.MetaPatch{
+		Labels:      labels,
+		Annotations: annotations,
+	}
 }
 
 // UnAllocate finds and deletes the allocated game server matching the specified connection string

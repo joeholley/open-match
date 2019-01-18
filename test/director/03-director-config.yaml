@@ -4,36 +4,29 @@ kind: ConfigMap
 metadata:
   name: om-director-config
 data:
-  director_config.json: |
-    {
-      "logging": {
-        "format": "text",
-        "level": "debug",
-        "source": false
-      },
+  director_config.yaml: |
+    logging:
+      format: text
+      level: debug
+      source: false
 
-      "starter": {
-        "profile": "/home/director/profiles/__empty__.json",
-        "minPlayers": 2,
-        "maxWaitSeconds": 1800 
-      },
-        
-      "profiles": [
-        "/home/director/profiles/testprofile.json",
-        "/home/director/profiles/something.json"
-      ],
+    starter:
+      profile: "/home/director/profiles/__empty__.json"
+      minPlayers: 2
+      maxWaitSeconds: 1800
 
-      "debug": {
-        "maxSends": 1,
-        "maxMatchesPerSend": 3,
-        "sleepBetweenSendsSeconds": 30,
-        "waitBetweenStartupsSeconds": 2
-      },
-        
-      "agones": {
-        "namespace": "default",
-        "fleetName": "udp-server",
-        "generateName": "udp-server-"
-      }
-    }
+    profiles:
+    - "/home/director/profiles/testprofile.json"
+    - "/home/director/profiles/something.json"
+
+    debug:
+      maxSends: 1
+      maxMatchesPerSend: 3
+      sleepBetweenSendsSeconds: 30
+      waitBetweenStartupsSeconds: 2
+      
+    agones:
+      namespace: default
+      fleetName: udp-server
+      generateName: udp-server-
   

@@ -18,7 +18,7 @@ COPY --from=builder \
     /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/director \
     /home/director/director
 COPY --from=builder \
-    /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/director_config.json \
+    /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/director_config.yaml \
     /home/director/
 COPY --from=builder \
     /go/src/github.com/GoogleCloudPlatform/open-match/examples/director/profiles/*.json \
