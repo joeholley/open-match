@@ -2,18 +2,26 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"strings"
+	"sync"
 	"time"
 
+	sdk "agones.dev/agones/pkg/sdk"
 	"agones.dev/agones/pkg/util/signals"
-	sdk "agones.dev/agones/sdks/go"
+	gosdk "agones.dev/agones/sdks/go"
 )
 
 const maxBufferSize = 1024
 
-var clients = make([]*net.Addr, 0)
+var state struct {
+	gsName         string
+	matchID        string
+	playersRosters map[string]string
+}
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -26,7 +34,7 @@ func main() {
 	}()
 
 	log.Print("Creating SDK instance")
-	s, err := sdk.NewSDK()
+	s, err := gosdk.NewSDK()
 	if err != nil {
 		log.Fatalf("Could not connect to sdk: %v", err)
 	}
@@ -48,82 +56,200 @@ func main() {
 		log.Fatalf("Could not send ready message")
 	}
 
-	err = server(ctx, ":10001") // Bind to all IPs for the machine
+	err = s.WatchGameServer(readGameServerMeta)
+	if err != nil {
+		log.Fatalf("Could not watch for game server configuration changes")
+	}
+
+	err = runServer(ctx, ":10001") // Bind to all IPs for the machine
 	if err != nil {
 		log.Print(err)
 	}
 }
 
-func server(ctx context.Context, address string) (err error) {
+func readGameServerMeta(gs *sdk.GameServer) {
+	if len(state.playersRosters) != 0 {
+		log.Println("GameServer configuration update ignored")
+		return
+	}
+
+	log.Println("Watching GameServer configuration update")
+	if meta := gs.ObjectMeta; meta != nil {
+		state.gsName = meta.Name
+		state.matchID = meta.Labels["openamtch/match"]
+
+		if j, ok := meta.Annotations["openmatch/rosters"]; ok {
+			playersRosters, err := unmarshalRosters(j)
+			if err != nil {
+				log.Printf("Could not unmarshall the value of \"%s\" annotation: `%s`", "openmatch/rosters", j)
+			}
+			state.playersRosters = playersRosters
+			log.Printf("Read players & rosters: %+v", state.playersRosters)
+		}
+	}
+}
+
+func unmarshalRosters(j string) (map[string]string, error) {
+	var rosters []struct {
+		Name    string `json:"name,omitempty"`
+		Players []struct {
+			ID string `json:"id,omitempty"`
+		} `json:"players,omitempty"`
+	}
+
+	err := json.Unmarshal([]byte(j), &rosters)
+	if err != nil {
+		return nil, err
+	}
+
+	playersRosters := make(map[string]string)
+	for _, r := range rosters {
+		for _, p := range r.Players {
+			playersRosters[p.ID] = r.Name
+		}
+	}
+	return playersRosters, nil
+}
+
+func runServer(ctx context.Context, address string) error {
 	// Start listening
-	log.Printf("Listening on %v:%v", address)
+	log.Printf("Listening on %v", address)
 	pc, err := net.ListenPacket("udp", address)
 	if err != nil {
-		return
+		return err
 	}
 	defer pc.Close()
 
-	stop := make(chan struct{})
-	errChan := make(chan error, 2)
-	buffer := make([]byte, maxBufferSize)
+	s := newServer(pc)
+	errC := make(chan error)
 
-	// Wait for new clients, add to the list
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Run commands loop handler
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-stop:
-				return
-			default:
-				_, addr, err := pc.ReadFrom(buffer)
-				if err != nil {
-					errChan <- fmt.Errorf("Error reading: %s", err)
-					return
-				}
-				clients = append(clients, &addr)
-				log.Printf("New client %s\n", addr.String())
-			}
+		defer wg.Done()
+		err = doREPL(s)
+		if err != nil {
+			errC <- fmt.Errorf("Error from REPL: " + err.Error())
 		}
 	}()
 
-	// Loop forever, sending timestamp to all clients in the list.
+	// Run timestamps broadcasting process
+	brDone := make(chan struct{})
 	go func() {
+		defer wg.Done()
+		tick := time.Tick(1 * time.Second)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-brDone:
 				return
-			case <-stop:
-				return
-			default:
-				ts := time.Now().Unix()
-				b := []byte(fmt.Sprintf("%v", ts))
-				log.Printf("Sending %v\n", ts)
-				for _, addr := range clients {
-					_, err = pc.WriteTo(b, *addr)
-					if err != nil {
-						errChan <- fmt.Errorf("Error sending: %s", err)
-						return
-					}
+			case t := <-tick:
+				err := s.broadcast(fmt.Sprintf("%v", t.Unix()))
+				if err != nil {
+					errC <- fmt.Errorf("Error from broadcaster: " + err.Error())
+					return
 				}
-				time.Sleep(1 * time.Second)
 			}
 		}
 	}()
 
 	select {
 	case <-ctx.Done():
-		log.Println("context cancelled")
-		// err = ctx.Err()
-	case err = <-errChan:
+	case <-s.exitC:
+	case err = <-errC:
 	}
 
-	close(stop)
-	return
+	close(brDone)
+	s.dying = true
+	pc.Close()
+	wg.Wait()
+
+	return err
+}
+
+func doREPL(s *server) error {
+	helpText := strings.Join([]string{
+		"Welcome to DGS \"" + state.gsName + "\"",
+		"This is a simple UDP server to which you can send some commands:",
+		"    `<playerID> START`: to subscribe to broadcasts;",
+		"    `<playerID> STOP`:  to unsubscribe from broadcasts;",
+		"    `<playerID> EXIT`:  to ask the server to exit;",
+		"    `HELP`:             to get this help text.",
+	}, "\n")
+
+	buf := make([]byte, maxBufferSize)
+	for {
+		addr, msg, err := s.read(buf)
+		if s.dying {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if "HELP" == strings.ToUpper(msg) {
+			_, err = s.pc.WriteTo([]byte(helpText), addr)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Clients expected to send message in format <PLAYER_ID COMMAND>
+		words := strings.Split(msg, " ")
+		if len(words) < 2 {
+			continue
+		}
+		playerID, cmd := words[0], strings.ToUpper(words[1])
+
+		// Ignore unknown players
+		if _, ok := state.playersRosters[playerID]; !ok {
+			log.Printf("Unauthorized connection attempt from %s: `%s`", addr.String(), msg)
+			continue
+		}
+
+		switch cmd {
+		case "START":
+			err := s.broadcast(fmt.Sprintf("Player %s connected from %s", playerID, addr.String()))
+			if err != nil {
+				return err
+			}
+			s.subscribe(playerID, &addr)
+			if err = s.send(playerID, fmt.Sprintf("Hello, %s, you've subscribed to broadcasts", playerID)); err != nil {
+				return err
+			}
+
+		case "STOP":
+			err := s.send(playerID, fmt.Sprintf("Bye, %s, you've unsubscribed", playerID))
+			if err != nil {
+				return err
+			}
+			s.unsubscribe(playerID)
+			if err = s.broadcast(fmt.Sprintf("Player %s disconnected", playerID)); err != nil {
+				return err
+			}
+
+		case "EXIT":
+			err := s.broadcast(fmt.Sprintf("Player %s asked server to shutdown", playerID))
+			if err != nil {
+				return err
+			}
+			s.exit()
+
+		case "HELP":
+			_, err = s.pc.WriteTo([]byte(helpText), addr)
+			if err != nil {
+				return err
+			}
+
+		default:
+		}
+	}
 }
 
 // doHealth sends the regular Health Pings
-func doHealth(s *sdk.SDK, stop <-chan struct{}) {
+func doHealth(s *gosdk.SDK, stop <-chan struct{}) {
 	tick := time.Tick(2 * time.Second)
 	for {
 		err := s.Health()
