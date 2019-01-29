@@ -70,6 +70,32 @@ func readProfile(filename string) (*backend.MatchObject, error) {
 	return pbProfile, nil
 }
 
+func countPlayers(match *backend.MatchObject) int64 {
+	var n int64
+	for _, p := range match.Pools {
+		if p.Stats != nil {
+			n += p.Stats.Count
+		}
+	}
+	return n
+}
+
+// Gets players from the json properties.roster field
+func getPlayers(match *backend.MatchObject) []string {
+	players := make([]string, 0)
+	result := gjson.Get(match.Properties, "properties.rosters")
+	result.ForEach(func(_, teamRoster gjson.Result) bool {
+		teamPlayers := teamRoster.Get("players")
+		teamPlayers.ForEach(func(_, teamPlayer gjson.Result) bool {
+			player := teamPlayer.Get("id")
+			players = append(players, player.String())
+			return true
+		})
+		return true // keep iterating
+	})
+	return players
+}
+
 func getBackendAPIClient() (*grpc.ClientConn, backend.BackendClient, error) {
 	// Connect gRPC client
 	addrs, err := net.LookupHost("om-backendapi")

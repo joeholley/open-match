@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/tidwall/gjson"
 
 	"github.com/GoogleCloudPlatform/open-match/internal/logging"
 	backend "github.com/GoogleCloudPlatform/open-match/internal/pb"
@@ -68,7 +66,6 @@ func init() {
 	maxSends = cfg.GetInt("debug.maxSends")
 	maxMatchesPerSend = cfg.GetInt("debug.maxMatchesPerSend")
 	sleepBetweenSends = time.Duration(cfg.GetInt64("debug.sleepBetweenSendsSeconds") * int64(time.Second))
-	waitBetweenStartups = time.Duration(cfg.GetInt64("debug.waitBetweenStartupsSeconds") * int64(time.Second))
 
 	// Agones
 	var namespace, fleetName, generateName string
@@ -87,47 +84,38 @@ func init() {
 	}
 
 	dirLog.WithFields(log.Fields{
-		"minPlayers": minPlayers,
-		"maxWait":    maxWait,
+		"starter.minPlayers": minPlayers,
+		"starter.maxWait":    maxWait,
 
-		"maxSends":            maxSends,
-		"maxMatchesPerSend":   maxMatchesPerSend,
-		"sleepBetweenSends":   sleepBetweenSends,
-		"waitBetweenStartups": waitBetweenStartups,
+		"debug.maxSends":          maxSends,
+		"debug.maxMatchesPerSend": maxMatchesPerSend,
+		"debug.sleepBetweenSends": sleepBetweenSends,
 
-		"namespace":    namespace,
-		"fleetName":    fleetName,
-		"generateName": generateName,
+		"agones.namespace":    namespace,
+		"agones.fleetName":    fleetName,
+		"agones.generateName": generateName,
 	}).Debug("Parameters read from configuration")
 }
 
 func main() {
 	starterProfile, profiles := mustReadProfiles(cfg)
 
+	ctx := context.Background()
+
 	// Sleep until there's enough players to submit real profiles
-	err = waitForPlayers(starterProfile, minPlayers, maxWait)
-	if err != nil {
-		dirLog.WithError(err).Fatal("Error waiting for players")
-	}
+	waitForPlayers(ctx, starterProfile)
 
 	dirLog.Info("Well, it looks like there is enough players to start matchmaking")
 
 	// Start sending profiles concurrently
 	var wg sync.WaitGroup
-	for i, p := range profiles {
-		dirLog.Debugf("Go send profile \"%s\"!", p.Id)
+	for _, p := range profiles {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sendProfile(p, maxSends, maxMatchesPerSend)
+			startSendProfile(ctx, p, dirLog)
 		}()
-
-		if i < len(profiles)-1 {
-			time.Sleep(waitBetweenStartups)
-		}
 	}
-
-	dirLog.Debug("Waiting for goroutines to exit...")
 
 	wg.Wait()
 	dirLog.Info("Exiting")
@@ -135,153 +123,15 @@ func main() {
 
 // Sends provided "starter" profile and receives match objects
 // until number of players in "defaultPool" passes threshold value (or time is over)
-func waitForPlayers(profile *backend.MatchObject, minPlayers int64, maxWait time.Duration) error {
-	beAPIConn, beAPI, err := getBackendAPIClient()
-	if err != nil {
-		return errors.New("error creating backend client: " + err.Error())
-	}
-	defer beAPIConn.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), maxWait)
+func waitForPlayers(ctx context.Context, profile *backend.MatchObject) {
+	ctx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
-	stream, err := beAPI.ListMatches(ctx, profile)
-	if err != nil {
-		return errors.New("error opening matches stream: " + err.Error())
-	}
-
-	for {
-		match, err := stream.Recv()
-		if err != nil {
-			return errors.New("error reading matches stream: " + err.Error())
-		}
-
+	err := listMatches(ctx, profile, func(match *backend.MatchObject) (bool, error) {
 		dirLog.Debugf("match.Pools = %+v", match.Pools)
-
-		var defaultPoolPlayersCount int64
-		for _, p := range match.Pools {
-			if p.Name == "defaultPool" {
-				if p.Stats != nil {
-					defaultPoolPlayersCount = p.Stats.Count
-				}
-			}
-		}
-		if defaultPoolPlayersCount >= minPlayers {
-			_ = stream.CloseSend()
-			return nil
-		}
-	}
-}
-
-func sendProfile(profile *backend.MatchObject, maxSends int, maxMatchesPerSend int) {
-	profLog := dirLog.WithField("profile", profile.Id)
-	defer func() {
-		profLog.Debugf("Exiting profile \"%s\"", profile.Id)
-	}()
-
-	for i := 0; i < maxSends || maxSends <= 0; i++ {
-		beAPIConn, beAPI, err := getBackendAPIClient()
-		if err != nil {
-			profLog.WithError(err).Error("error creating Backend client")
-			return
-		}
-
-		sendLog := profLog.WithField("send", i)
-		sendLog.Debugf("Sending profile \"%s\" (attempt #%d/%d)...", profile.Id, i+1, maxSends)
-
-		stream, err := beAPI.ListMatches(context.Background(), profile)
-		if err != nil {
-			sendLog.WithError(err).Error("error opening matches stream")
-			return
-		}
-
-		for j := 0; ; j++ {
-			recvLog := sendLog.WithField("recv", j)
-			if j >= maxMatchesPerSend && maxMatchesPerSend > 0 {
-				recvLog.Debug("Reached max num of match receive attempts, closing stream")
-				stream.CloseSend()
-				break
-			}
-
-			match, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				recvLog.WithError(err).Error("Error receiving match, closing stream")
-				stream.CloseSend()
-				break
-			}
-
-			matchLog := recvLog.WithField("match", match.Id)
-
-			if match.Error != "" {
-				matchLog.WithField(log.ErrorKey, match.Error).Error("Received a match with non-empty error, closing stream")
-				stream.CloseSend()
-				break
-			}
-			if !gjson.Valid(string(match.Properties)) {
-				matchLog.Error("Invalid properties json, closing stream")
-				stream.CloseSend()
-				break
-			}
-
-			// Try to allocate a DGS. Delete the match and sleep if no DGS avaialable
-			var connstring string
-			connstring, err = allocator.Allocate(match)
-			if err != nil {
-				matchLog.WithError(err).Error("Could not allocate, match will be deleted, closing stream")
-				stream.CloseSend()
-
-				_, err = beAPI.DeleteMatch(context.Background(), match)
-				if err != nil {
-					matchLog.WithError(err).Error("Error deleting match after failed allocation attempt")
-				}
-				break
-			}
-
-			players := getPlayers(match)
-			fields := log.Fields{"players": players, "connstring": connstring}
-
-			assign := &backend.Assignments{Rosters: match.Rosters, Assignment: connstring}
-			_, err = beAPI.CreateAssignments(context.Background(), assign)
-			if err != nil {
-				matchLog.WithFields(fields).WithError(err).Error("Error creating assignments, game server will be unallocated")
-
-				// Remove game server allocation
-				err = allocator.UnAllocate(connstring)
-				if err != nil {
-					matchLog.
-						WithField("connstring", connstring).
-						WithError(err).
-						Error("Error unallocating game server after failed attempt to create assignments")
-				}
-				break
-			}
-			matchLog.WithFields(fields).Infof("Assigned %d players to %s", len(players), connstring)
-		}
-
-		beAPIConn.Close()
-
-		if i < maxSends-1 || maxSends <= 0 {
-			sendLog.Debugf("Sleeping \"%s\"...", profile.Id)
-			time.Sleep(sleepBetweenSends)
-		}
-	}
-}
-
-// Gets players from the json properties.roster field
-func getPlayers(match *backend.MatchObject) []string {
-	players := make([]string, 0)
-	result := gjson.Get(match.Properties, "properties.rosters")
-	result.ForEach(func(_, teamRoster gjson.Result) bool {
-		teamPlayers := teamRoster.Get("players")
-		teamPlayers.ForEach(func(_, teamPlayer gjson.Result) bool {
-			player := teamPlayer.Get("id")
-			players = append(players, player.String())
-			return true
-		})
-		return true // keep iterating
+		return countPlayers(match) < minPlayers, nil
 	})
-	return players
+	if err != nil {
+		dirLog.WithError(err).Fatal("Error waiting for players")
+	}
 }

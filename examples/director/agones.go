@@ -24,11 +24,11 @@ type AgonesAllocator struct {
 	fleetName    string
 	generateName string
 
-	logger *logrus.Entry
+	l *logrus.Entry
 }
 
 // NewAgonesAllocator creates new AgonesAllocator with in cluster k8s config
-func NewAgonesAllocator(namespace, fleetName, generateName string, logger *logrus.Entry) (*AgonesAllocator, error) {
+func NewAgonesAllocator(namespace, fleetName, generateName string, l *logrus.Entry) (*AgonesAllocator, error) {
 	agonesClient, err := getAgonesClient()
 	if err != nil {
 		return nil, errors.New("Could not create Agones allocator: " + err.Error())
@@ -41,7 +41,7 @@ func NewAgonesAllocator(namespace, fleetName, generateName string, logger *logru
 		fleetName:    fleetName,
 		generateName: generateName,
 
-		logger: logger.WithFields(logrus.Fields{
+		l: l.WithFields(logrus.Fields{
 			"source":       "agones",
 			"namespace":    namespace,
 			"fleetname":    fleetName,
@@ -91,7 +91,7 @@ func (a *AgonesAllocator) Allocate(match *backend.MatchObject) (string, error) {
 	dgs := fa.Status.GameServer.Status
 	connstring := fmt.Sprintf("%s:%d", dgs.Address, dgs.Ports[0].Port)
 
-	a.logger.WithFields(logrus.Fields{
+	a.l.WithFields(logrus.Fields{
 		"fleetallocation": fa.Name,
 		"gameserver":      fa.Status.GameServer.Name,
 		"connstring":      connstring,
@@ -110,13 +110,13 @@ func (a *AgonesAllocator) getAllocationMeta(match *backend.MatchObject) v1alpha1
 	if pools, err := json.Marshal(match.Pools); err == nil {
 		annotations["openmatch/pools"] = string(pools)
 	} else {
-		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Pools to attach to FleetAllocation metadata")
+		a.l.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Pools to attach to FleetAllocation metadata")
 	}
 
 	if rosters, err := json.Marshal(match.Rosters); err == nil {
 		annotations["openmatch/rosters"] = string(rosters)
 	} else {
-		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Rosters to attach to FleetAllocation metadata")
+		a.l.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Rosters to attach to FleetAllocation metadata")
 	}
 
 	return v1alpha1.MetaPatch{
@@ -165,10 +165,10 @@ func (a *AgonesAllocator) UnAllocate(connstring string) error {
 	err = gsi.Delete(gameServer.Name, nil)
 	if err != nil {
 		msg := "failed to delete game server"
-		a.logger.WithFields(fields).WithError(err).Error(msg)
+		a.l.WithFields(fields).WithError(err).Error(msg)
 		return errors.New(msg + ": " + err.Error())
 	}
-	a.logger.WithFields(fields).Info("GameServer deleted")
+	a.l.WithFields(fields).Info("GameServer deleted")
 
 	return nil
 }
