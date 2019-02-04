@@ -110,21 +110,13 @@ func (a *AgonesAllocator) getAllocationMeta(match *backend.MatchObject) v1alpha1
 	if pools, err := json.Marshal(match.Pools); err == nil {
 		annotations["openmatch/pools"] = string(pools)
 	} else {
-<<<<<<< HEAD
 		a.l.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Pools to attach to FleetAllocation metadata")
-=======
-		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Pools to attach to FleetAllocation metadata")
->>>>>>> 33ecde8f422d32473a9b0ee57b84efda08f14ede
 	}
 
 	if rosters, err := json.Marshal(match.Rosters); err == nil {
 		annotations["openmatch/rosters"] = string(rosters)
 	} else {
-<<<<<<< HEAD
 		a.l.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Rosters to attach to FleetAllocation metadata")
-=======
-		a.logger.WithField("match", match.Id).WithError(err).Error("Could not marhsal MatchObject.Rosters to attach to FleetAllocation metadata")
->>>>>>> 33ecde8f422d32473a9b0ee57b84efda08f14ede
 	}
 
 	return v1alpha1.MetaPatch{
