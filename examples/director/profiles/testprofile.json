@@ -1,5 +1,5 @@
 {
-    "imagename":"gcr.io/open-match-222408/openmatch-mmf:py3",
+    "imagename":"gcr.io/open-match-public-images/openmatch-mmf:py3",
     "name":"testprofilev1",
     "id":"testprofile",
     "properties":{

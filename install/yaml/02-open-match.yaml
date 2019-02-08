@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: om-backend
-        image: gcr.io/open-match-222408/openmatch-backendapi:dev
+        image: gcr.io/open-match-public-images/openmatch-backendapi:dev
         imagePullPolicy: Always
         volumeMounts:
         - name: om-configmap
@@ -87,7 +87,7 @@ spec:
     spec:
       containers:
       - name: om-frontendapi
-        image: gcr.io/open-match-222408/openmatch-frontendapi:dev
+        image: gcr.io/open-match-public-images/openmatch-frontendapi:dev
         imagePullPolicy: Always
         volumeMounts:
         - name: om-configmap
@@ -141,7 +141,7 @@ spec:
     spec:
       containers:
       - name: om-mmforc
-        image: gcr.io/open-match-222408/openmatch-mmforc:dev
+        image: gcr.io/open-match-public-images/openmatch-mmforc:dev
         imagePullPolicy: Always
         volumeMounts:
         - name: om-configmap
@@ -185,7 +185,7 @@ spec:
     spec:
       containers:
       - name: om-mmlogic
-        image: gcr.io/open-match-222408/openmatch-mmlogicapi:dev
+        image: gcr.io/open-match-public-images/openmatch-mmlogicapi:dev
         imagePullPolicy: Always
         volumeMounts:
         - name: om-configmap

@@ -6,7 +6,7 @@ metadata:
 data:
   __empty__.json: |
     {
-      "imagename": "gcr.io/open-match-222408/openmatch-mmf-py3-mmlogic-simple:dev",
+      "imagename": "gcr.io/open-match-public-images/openmatch-mmf-py3-mmlogic-simple:dev",
       "name": "emptyprofilev1",
       "id": "emptyprofile",
       "properties": {
@@ -24,7 +24,7 @@ data:
   
   testprofile.json: |
     {
-      "imagename": "gcr.io/open-match-222408/openmatch-mmf-py3-mmlogic-simple:dev",
+      "imagename": "gcr.io/open-match-public-images/openmatch-mmf-py3-mmlogic-simple:dev",
       "name": "testprofilev1",
       "id": "testprofile",
       "properties": {
@@ -78,7 +78,7 @@ data:
   
   something.json: |
     {
-      "imagename": "gcr.io/open-match-222408/openmatch-mmf-py3-mmlogic-simple:dev",
+      "imagename": "gcr.io/open-match-public-images/openmatch-mmf-py3-mmlogic-simple:dev",
       "name": "somethingv1",
       "id": "something",
       "properties": {

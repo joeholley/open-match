@@ -1,3 +1,15 @@
+# Configuration 
+
+Multiple Open Match componenets rely on the existence of a Kubernetes configmap populated with the values in the config file in `<$REPO_ROOT>/config/matchmaker_config.yaml` and won't start unless that configmap exists.  You can create it by running this command from the repository root directory:
+```
+kubectl create configmap om-configmap --from-file=config/matchmaker_config.yaml
+```
+If it already exists and you want to update it with new values, use this command instead:
+```
+kubectl create configmap om-configmap --from-file=config/matchmaker_config.yaml --dry-run -o yaml | kubectl replace configmap om-configmap -f -
+```
+For more details, refer to [Issue #42](https://github.com/GoogleCloudPlatform/open-match/issues/42).
+
 # install/yaml
 This directory contains Kubernetes YAML resource definitions, which should be applied according to their filename order.  Only Redis & Open Match are required, Prometheus is optional.
 ```

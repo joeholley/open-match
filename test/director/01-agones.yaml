@@ -15,7 +15,7 @@ spec:
         spec:
           containers:
           - name: simple-udp
-            image: gcr.io/open-match-222408/udp-server:latest
+            image: gcr.io/open-match-public-images/udp-server:latest
 ---
 apiVersion: "stable.agones.dev/v1alpha1"
 kind: FleetAutoscaler

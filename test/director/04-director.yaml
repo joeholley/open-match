@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: director
-        image: gcr.io/open-match-222408/openmatch-director:dev
+        image: gcr.io/open-match-public-images/openmatch-director:dev
         imagePullPolicy: Always
         volumeMounts:
         - name: director-config
