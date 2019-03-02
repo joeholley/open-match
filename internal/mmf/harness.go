@@ -2,7 +2,6 @@ package mmf
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"time"
 
@@ -22,13 +21,6 @@ var (
 	mmfLog = log.WithFields(mmfLogFields)
 )
 
-// prettyPrint function for debugging
-// https://stackoverflow.com/a/51270134/3113674
-func prettyPrint(i interface{}) string {
-	s, _ := json.MarshalIndent(i, "", "\t")
-	return string(s)
-}
-
 // Step 2 - Talk to Redis.
 // This example uses the MM Logic API in OM to read/write to/from redis.
 
@@ -46,7 +38,7 @@ func Run(fnArgs *api.Arguments, cfg *viper.Viper, mmlogic api.MmLogicClient) err
 		mmfLog.Error(err)
 		return err
 	}
-	mmfLog.Debug("Profile: ", prettyPrint(profile))
+	mmfLog.Debug("Profile: ", profile)
 
 	// Step 4 - Select the player data from Redis that we want for our matchmaking logic.
 	playerPools := make([]*api.PlayerPool, len(profile.Pools))
@@ -142,7 +134,7 @@ func Run(fnArgs *api.Arguments, cfg *viper.Viper, mmlogic api.MmLogicClient) err
 
 	// DEBUG
 	if cfg.GetBool("debug") {
-		mmfLog.Debug("Output MatchObject:", prettyPrint(mo))
+		mmfLog.Debug("Output MatchObject:", mo)
 	}
 
 	// Step 6 - Write the outcome of the matchmaking logic back to state storage.
