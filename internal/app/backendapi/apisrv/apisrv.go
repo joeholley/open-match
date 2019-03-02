@@ -318,7 +318,7 @@ func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMat
 // defined in api/protobuf-spec/backend.proto
 // This is the streaming version of CreateMatch - continually submitting the
 // profile to be filled until the requesting service ends the connection.
-func (s *backendAPI) ListMatches(p *backend.MatchObject, matchStream backend.Backend_ListMatchesServer) error {
+func (s *backendAPI) ListMatches(req *backend.ListMatchesRequest, matchStream backend.Backend_ListMatchesServer) error {
 
 	// call creatematch in infinite loop as long as the stream is open
 	ctx := matchStream.Context() // https://talks.golang.org/2015/gotham-grpc.slide#30
@@ -327,18 +327,14 @@ func (s *backendAPI) ListMatches(p *backend.MatchObject, matchStream backend.Bac
 	funcName := "ListMatches"
 	fnCtx, _ := tag.New(ctx, tag.Insert(KeyMethod, funcName))
 
-	beLog = beLog.WithFields(log.Fields{"func": funcName})
-	beLog.WithFields(log.Fields{
-		"profileID": p.Id,
-	}).Info("gRPC call executing. Calling CreateMatch. Looping until cancelled.")
+	lmLog := beLog.WithFields(log.Fields{"func": funcName, "profileID": req.Matchobject.Id})
+	lmLog.Info("gRPC call recieved. Calling CreateMatch. Looping until cancelled.")
 
 	for {
 		select {
 		case <-ctx.Done():
 			// Context cancelled, probably because the client cancelled their request, time to exit.
-			beLog.WithFields(log.Fields{
-				"profileID": p.Id,
-			}).Info("gRPC Context cancelled; client is probably finished receiving matches")
+			lmLog.Info("gRPC Context cancelled; client is probably finished receiving matches")
 
 			// TODO: need to make sure that in-flight matches don't get leaked here.
 			stats.Record(fnCtx, BeGrpcRequests.M(1))
@@ -347,26 +343,20 @@ func (s *backendAPI) ListMatches(p *backend.MatchObject, matchStream backend.Bac
 		default:
 			// Retreive results from Redis
 			//requestProfile := proto.Clone(p).(*backend.MatchObject)
-			requestProfile := &backend.CreateMatchRequest{
-				Matchobject: proto.Clone(p).(*backend.MatchObject),
-				Mmfspec:     &backend.MmfSpec{},
+			cmReq := &backend.CreateMatchRequest{
+				Matchobject: proto.Clone(req.Matchobject).(*backend.MatchObject),
+				Mmfspec:     proto.Clone(req.Mmfspec).(*backend.MmfSpec),
 			}
 
-			/*
-				beLog.Debug("new profile requested!")
-				beLog.Debug(requestProfile)
-				beLog.Debug(&requestProfile)
-			*/
-			mo, err := s.CreateMatch(ctx, requestProfile)
-
-			beLog = beLog.WithFields(log.Fields{"func": funcName})
+			// Call CreateMatch
+			mo, err := s.CreateMatch(ctx, cmReq)
 
 			if err != nil {
-				beLog.WithFields(log.Fields{"error": err.Error()}).Error("Failure calling CreateMatch")
+				lmLog.WithFields(log.Fields{"error": err.Error()}).Error("Failure calling CreateMatch")
 				stats.Record(fnCtx, BeGrpcErrors.M(1))
 				return err
 			}
-			beLog.WithFields(log.Fields{"matchProperties": fmt.Sprintf("%v", mo)}).Debug("Streaming back match object")
+			lmLog.WithFields(log.Fields{"matchProperties": fmt.Sprintf("%v", mo)}).Debug("Streaming back match object")
 			matchStream.Send(mo)
 
 			// TODO: This should be tunable, but there should be SOME sleep here, to give a requestor a window
