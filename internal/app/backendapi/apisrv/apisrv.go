@@ -110,7 +110,7 @@ func (s *BackendAPI) Open() error {
 
 // CreateMatch is this service's implementation of the CreateMatch gRPC method
 // defined in api/protobuf-spec/backend.proto
-func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject) (*backend.MatchObject, error) {
+func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMatchRequest) (*backend.MatchObject, error) {
 
 	// Get a cancel-able context
 	ctx, cancel := context.WithCancel(c)
@@ -122,25 +122,33 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 
 	// Generate a request to fill the profile. Make a unique request ID.
 	moID := xid.New().String()
-	requestKey := moID + "." + profile.Id
+	resultID := moID + "." + beRequest.Matchobject.Id
+	req := &backend.Request{
+		ProfileId:  beRequest.Matchobject.Id,
+		RequestId:  moID,
+		ProposalId: "proposal." + resultID,
+		ResultId:   resultID,
+	}
+	mmfArgs := backend.Arguments{Matchobject: beRequest.Matchobject, Request: req}
 
 	/*
 		// Debugging logs
-		beLog.Info("Pools nil? ", (profile.Pools == nil))
-		beLog.Info("Pools empty? ", (len(profile.Pools) == 0))
-		beLog.Info("Rosters nil? ", (profile.Rosters == nil))
-		beLog.Info("Rosters empty? ", (len(profile.Rosters) == 0))
+		beLog.Info("Pools nil? ", (beRequest.Matchobject.Pools == nil))
+		beLog.Info("Pools empty? ", (len(beRequest.Matchobject.Pools) == 0))
+		beLog.Info("Rosters nil? ", (beRequest.Matchobject.Rosters == nil))
+		beLog.Info("Rosters empty? ", (len(beRequest.Matchobject.Rosters) == 0))
 		beLog.Info("config set for json.pools?", s.cfg.IsSet("jsonkeys.pools"))
 		beLog.Info("contents key?", s.cfg.GetString("jsonkeys.pools"))
-		beLog.Info("contents exist?", gjson.Get(profile.Properties, s.cfg.GetString("jsonkeys.pools")).Exists())
+		beLog.Info("contents exist?", gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.pools")).Exists())
 	*/
 
 	// Case where no protobuf pools was passed; check if there's a JSON version in the properties.
 	// This is for backwards compatibility, it is recommended you populate the protobuf's
 	// 'pools' field directly and pass it to CreateMatch/ListMatches
-	if profile.Pools == nil && s.cfg.IsSet("jsonkeys.pools") &&
-		gjson.Get(profile.Properties, s.cfg.GetString("jsonkeys.pools")).Exists() {
-		poolsJSON := fmt.Sprintf("{\"pools\": %v}", gjson.Get(profile.Properties, s.cfg.GetString("jsonkeys.pools")).String())
+	// DEPRECATED: In a future version, you'll have to set the protobuf 'pools' field to use the MMLogic API.
+	if beRequest.Matchobject.Pools == nil && s.cfg.IsSet("jsonkeys.pools") &&
+		gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.pools")).Exists() {
+		poolsJSON := fmt.Sprintf("{\"pools\": %v}", gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.pools")).String())
 		ppLog := beLog.WithFields(log.Fields{"jsonkey": s.cfg.GetString("jsonkeys.pools")})
 		ppLog.Info("poolsJSON: ", poolsJSON)
 
@@ -149,7 +157,7 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 		if err != nil {
 			ppLog.Error("failed to parse JSON to protobuf pools")
 		} else {
-			profile.Pools = ppools.Pools
+			beRequest.Matchobject.Pools = ppools.Pools
 			ppLog.Info("parsed JSON to protobuf pools")
 		}
 	}
@@ -157,9 +165,10 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 	// Case where no protobuf roster was passed; check if there's a JSON version in the properties.
 	// This is for backwards compatibility, it is recommended you populate the
 	// protobuf's 'rosters' field directly and pass it to CreateMatch/ListMatches
-	if profile.Rosters == nil && s.cfg.IsSet("jsonkeys.rosters") &&
-		gjson.Get(profile.Properties, s.cfg.GetString("jsonkeys.rosters")).Exists() {
-		rostersJSON := fmt.Sprintf("{\"rosters\": %v}", gjson.Get(profile.Properties, s.cfg.GetString("jsonkeys.rosters")).String())
+	// DEPRECATED: In a future version, you'll have to set the protobuf 'rosters' field to use the MMLogic API.
+	if beRequest.Matchobject.Rosters == nil && s.cfg.IsSet("jsonkeys.rosters") &&
+		gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.rosters")).Exists() {
+		rostersJSON := fmt.Sprintf("{\"rosters\": %v}", gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.rosters")).String())
 		rLog := beLog.WithFields(log.Fields{"jsonkey": s.cfg.GetString("jsonkeys.rosters")})
 
 		prosters := &backend.MatchObject{}
@@ -167,29 +176,28 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 		if err != nil {
 			rLog.Error("failed to parse JSON to protobuf rosters")
 		} else {
-			profile.Rosters = prosters.Rosters
+			beRequest.Matchobject.Rosters = prosters.Rosters
 			rLog.Info("parsed JSON to protobuf rosters")
 		}
 	}
 
 	// Add fields for all subsequent logging
 	beLog = beLog.WithFields(log.Fields{
-		"profileID":     profile.Id,
-		"func":          funcName,
-		"matchObjectID": moID,
-		"requestKey":    requestKey,
+		"beRequest.MatchobjectID": beRequest.Matchobject.Id,
+		"matchObjectID":           moID,
+		"resultID":                resultID,
 	})
 	beLog.Info("gRPC call executing")
-	beLog.Info("profile is")
-	beLog.Info(profile)
+	beLog.Debug("beRequest.Matchobject is")
+	beLog.Debug(beRequest.Matchobject)
 
-	// Write profile to state storage
-	err := redispb.MarshalToRedis(ctx, s.pool, profile, s.cfg.GetInt("redis.expirations.matchobject"))
+	// Write beRequest.Matchobject to state storage
+	err := redispb.MarshalToRedis(ctx, s.pool, beRequest.Matchobject, s.cfg.GetInt("redis.expirations.matchobject"))
 	if err != nil {
 		beLog.WithFields(log.Fields{
 			"error":     err.Error(),
 			"component": "statestorage",
-		}).Error("State storage failure to create match profile")
+		}).Error("State storage failure to create match beRequest.Matchobject")
 
 		// Failure! Return empty match object and the error
 		stats.Record(fnCtx, BeGrpcErrors.M(1))
@@ -198,7 +206,11 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 	beLog.Info("Profile written to state storage")
 
 	// Queue the request ID to be sent to an MMF
-	_, err = redisHelpers.Update(ctx, s.pool, s.cfg.GetString("queues.profiles.name"), requestKey)
+	// DEPRECATED: MMForc will be removed in a future version.  All MMFs going
+	// forward should be written as 'serving' functions that can be deployed to
+	// the Kubernetes cluster, either manually or using a serverless function
+	// add-on (like Knative)
+	_, err = redisHelpers.Update(ctx, s.pool, s.cfg.GetString("queues.profiles.name"), resultID)
 	if err != nil {
 		beLog.WithFields(log.Fields{
 			"error":     err.Error(),
@@ -218,8 +230,8 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 
 	watcherBOCtx := backoff.WithContext(watcherBO, ctx)
 
-	// get and return matchobject, it will be written to the requestKey when the MMF has finished.
-	watchChan := redispb.Watcher(watcherBOCtx, s.pool, backend.MatchObject{Id: requestKey}) // Watcher() runs the appropriate Redis commands.
+	// get and return matchobject, it will be written to the resultID when the MMF has finished.
+	watchChan := redispb.Watcher(watcherBOCtx, s.pool, backend.MatchObject{Id: resultID}) // Watcher() runs the appropriate Redis commands.
 	newMO, ok := <-watchChan
 	if !ok {
 		// ok is false if watchChan has been closed by redispb.Watcher()
@@ -235,7 +247,7 @@ func (s *backendAPI) CreateMatch(c context.Context, profile *backend.MatchObject
 
 	// 'ok' was true, so properties should contain the results from redis.
 	// Do basic error checking on the returned JSON
-	if !gjson.Valid(profile.Properties) {
+	if !gjson.Valid(beRequest.Matchobject.Properties) {
 		newMO.Error = "retreived properties json was malformed"
 	}
 
@@ -282,7 +294,12 @@ func (s *backendAPI) ListMatches(p *backend.MatchObject, matchStream backend.Bac
 
 		default:
 			// Retreive results from Redis
-			requestProfile := proto.Clone(p).(*backend.MatchObject)
+			//requestProfile := proto.Clone(p).(*backend.MatchObject)
+			requestProfile := &backend.CreateMatchRequest{
+				Matchobject: proto.Clone(p).(*backend.MatchObject),
+				Mmfspec:     &backend.MmfSpec{},
+			}
+
 			/*
 				beLog.Debug("new profile requested!")
 				beLog.Debug(requestProfile)
