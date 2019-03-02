@@ -104,7 +104,7 @@ func Run(fnArgs *api.Arguments, cfg *viper.Viper, mmlogic api.MmLogicClient) err
 	// results in it.  By default, assume we weren't successful (write to error
 	// ID) until proven otherwise.
 	mo := &api.MatchObject{
-		Id:         fnArgs.Request.ErrorId,
+		Id:         fnArgs.Request.ResultId,
 		Properties: profile.Properties,
 		Pools:      profile.Pools,
 	}
@@ -127,7 +127,7 @@ func Run(fnArgs *api.Arguments, cfg *viper.Viper, mmlogic api.MmLogicClient) err
 		if err != nil {
 			mmfLog.WithFields(log.Fields{
 				"error": err.Error(),
-				"id":    fnArgs.Request.ErrorId,
+				"id":    fnArgs.Request.ResultId,
 			}).Error("MMF returned an unrecoverable error")
 			mo.Error = err.Error()
 		} else {
