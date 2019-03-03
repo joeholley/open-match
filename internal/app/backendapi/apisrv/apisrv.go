@@ -38,6 +38,7 @@ import (
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
@@ -124,20 +125,21 @@ func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMat
 	fnCtx, _ := tag.New(ctx, tag.Insert(KeyMethod, funcName))
 
 	// Generate a request to fill the profile. Make a unique request ID.
-	moID := xid.New().String()
-	resultID := moID + "." + beRequest.Matchobject.Id
+	requestID := xid.New().String()
+	resultID := requestID + "." + beRequest.Matchobject.Id
 	req := &backend.Request{
-		ProfileId:  beRequest.Matchobject.Id,
-		RequestId:  moID,
-		ProposalId: "proposal." + resultID,
-		ResultId:   resultID,
+		// State storage keys
+		ProfileId:  beRequest.Matchobject.Id, // Location of original match object
+		RequestId:  requestID,                // Prefix to make results key unique.
+		ResultId:   resultID,                 // Final location of match results.
+		ProposalId: "proposal." + resultID,   // Intermediate location for results that may have collisions.
 	}
 	mmfArgs := backend.Arguments{Matchobject: beRequest.Matchobject, Request: req}
 
+	// DEPRECATED: In a future version, you'll have to set the protobuf 'pools' field to use the MMLogic API.
 	// Case where no protobuf pools was passed; check if there's a JSON version in the properties.
 	// This is for backwards compatibility, it is recommended you populate the protobuf's
 	// 'pools' field directly and pass it to CreateMatch/ListMatches
-	// DEPRECATED: In a future version, you'll have to set the protobuf 'pools' field to use the MMLogic API.
 	if beRequest.Matchobject.Pools == nil && s.cfg.IsSet("jsonkeys.pools") &&
 		gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.pools")).Exists() {
 		poolsJSON := fmt.Sprintf("{\"pools\": %v}", gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.pools")).String())
@@ -154,10 +156,10 @@ func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMat
 		}
 	}
 
+	// DEPRECATED: In a future version, you'll have to set the protobuf 'rosters' field to use the MMLogic API.
 	// Case where no protobuf roster was passed; check if there's a JSON version in the properties.
 	// This is for backwards compatibility, it is recommended you populate the
 	// protobuf's 'rosters' field directly and pass it to CreateMatch/ListMatches
-	// DEPRECATED: In a future version, you'll have to set the protobuf 'rosters' field to use the MMLogic API.
 	if beRequest.Matchobject.Rosters == nil && s.cfg.IsSet("jsonkeys.rosters") &&
 		gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.rosters")).Exists() {
 		rostersJSON := fmt.Sprintf("{\"rosters\": %v}", gjson.Get(beRequest.Matchobject.Properties, s.cfg.GetString("jsonkeys.rosters")).String())
@@ -175,9 +177,9 @@ func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMat
 
 	// Add fields for all subsequent logging
 	beLog = beLog.WithFields(log.Fields{
-		"beRequest.MatchobjectID": beRequest.Matchobject.Id,
-		"matchObjectID":           moID,
-		"resultID":                resultID,
+		"profileID": beRequest.Matchobject.Id,
+		"requestID": requestID,
+		"resultID":  resultID,
 	})
 	beLog.Info("gRPC call executing")
 	beLog.Debug("beRequest.Matchobject is")
@@ -337,12 +339,12 @@ func (s *backendAPI) ListMatches(req *backend.ListMatchesRequest, matchStream ba
 			lmLog.Info("gRPC Context cancelled; client is probably finished receiving matches")
 
 			// TODO: need to make sure that in-flight matches don't get leaked here.
+			// State storage match object and ignorelist expiration probably helps
 			stats.Record(fnCtx, BeGrpcRequests.M(1))
 			return nil
 
 		default:
 			// Retreive results from Redis
-			//requestProfile := proto.Clone(p).(*backend.MatchObject)
 			cmReq := &backend.CreateMatchRequest{
 				Matchobject: proto.Clone(req.Matchobject).(*backend.MatchObject),
 				Mmfspec:     proto.Clone(req.Mmfspec).(*backend.MmfSpec),
