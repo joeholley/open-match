@@ -118,9 +118,6 @@ func RunApplication() {
 	pollSleep := cfg.GetInt("evaluator.pollIntervalMs")
 	interval := cfg.GetInt64("evaluator.intervalMs")
 
-	// TODO: remove
-	cfg.Set("debug", false)
-
 	// Logging for the proposal queue
 	pqLog := evLog.WithFields(log.Fields{"proposalQueue": cfg.GetString("queues.proposals.name")})
 
@@ -250,10 +247,6 @@ func evaluator(ctx context.Context) {
 	// Get connection to redis
 	redisConn := pool.Get()
 	defer redisConn.Close()
-
-	// TODO: remove
-	cfg.Set("debug", true)
-	defer cfg.Set("debug", false)
 
 	start := time.Now()
 
