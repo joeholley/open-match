@@ -119,7 +119,7 @@ func RunApplication() {
 	interval := cfg.GetInt64("evaluator.intervalMs")
 
 	// TODO: remove
-	viper.Set("debug", false)
+	cfg.Set("debug", false)
 
 	// Logging for the proposal queue
 	pqLog := evLog.WithFields(log.Fields{"proposalQueue": cfg.GetString("queues.proposals.name")})
