@@ -267,6 +267,7 @@ func (s *backendAPI) CreateMatch(c context.Context, beRequest *backend.CreateMat
 
 		// Kick off the specified MMF.
 		// TODO: Decide if there's value in looking at the results beyond just checking for Errors.
+		beLog.Debug("mmfArgs: ", mmfArgs)
 		_, err := client.Run(ctx, &mmfArgs)
 		if err != nil {
 			mgLog.WithFields(log.Fields{
