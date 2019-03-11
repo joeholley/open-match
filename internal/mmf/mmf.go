@@ -2,6 +2,7 @@ package mmf
 
 import (
 	"errors"
+	"math"
 	"math/rand"
 	"time"
 
@@ -47,7 +48,8 @@ func makeMatches(profile string, rosters []*api.Roster, pools []*api.PlayerPool)
 				if slot.Pool == pool.Name && len(pool.Roster.Players) > 0 {
 					mmfLog.Info("   Looking for player in pool: ", pool.Name, len(pool.Roster.Players))
 					// Get a random index (subtract 1 because arrays are zero-indexed)
-					randPlayerIndex := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(pool.Roster.Players))
+					// TODO probably an off by one errorr, just flooring to zero for GDC demo
+					randPlayerIndex := int(math.Max(0, float64(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(pool.Roster.Players)))))
 					mmfLog.Infof("   Selected player index %v", randPlayerIndex)
 					selectedPlayer := pool.Roster.Players[randPlayerIndex]
 					mmfLog.Infof("   Selected player index %v: %v", randPlayerIndex, selectedPlayer.Id)
