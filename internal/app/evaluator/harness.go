@@ -321,7 +321,7 @@ func evaluator(ctx context.Context) {
 		// Acrtually approve the match
 		evLog.Infof("approving proposal number %v, ID: %v -> %v\n", proposalIndex, proposedID, backendID)
 		if !dryrun {
-			evLog.Infof(" RENAME %v %v", proposedID, backendID)
+			evLog.Debugf(" RENAME %v %v", proposedID, backendID)
 			_, err = redisConn.Do("RENAME", proposedID, backendID)
 			if err != nil {
 				// RENAME only fails if the source key doesn't exist
@@ -410,7 +410,7 @@ func evaluator(ctx context.Context) {
 		evLog.Warning("No rejected players to re-queue!")
 	}
 
-	evLog.Printf("0 Finished in %v seconds.", time.Since(start).Seconds())
+	evLog.Printf("---- Finished in %v seconds.", time.Since(start).Seconds())
 }
 
 // stub is the name of this function because it's just a functioning test, not
