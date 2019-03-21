@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: om-mmlogic
-        image: gcr.io/open-match-public-images/openmatch-mmlogicapi:dev
+        image: gcr.io/matchmaker-dev-201405/openmatch-mmlogicapi:0.4
         imagePullPolicy: Always
         ports:
         - name: grpc
@@ -30,3 +30,14 @@ spec:
           requests:
             memory: 100Mi
             cpu: 100m
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config/
+      volumes:
+      - name: config
+        configMap:
+          name: om-configmap-debug-off
+          items:
+          - key: om-configmap-debug-off.yaml
+            path: matchmaker_config.yaml
+

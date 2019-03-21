@@ -19,8 +19,12 @@ spec:
     spec:
       containers:
       - name: om-backend
-        image: gcr.io/open-match-public-images/openmatch-backendapi:dev
+        image: gcr.io/matchmaker-dev-201405/openmatch-backendapi:0.4
+        #command: ["/bin/sleep", "300000"]
         imagePullPolicy: Always
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config/
         ports:
         - name: grpc
           containerPort: 50505
@@ -30,3 +34,11 @@ spec:
           requests:
             memory: 100Mi
             cpu: 100m
+      volumes:
+      - name: config
+        configMap:
+          name: om-configmap-debug-off
+          items:
+          - key: om-configmap-debug-off.yaml
+            path: matchmaker_config.yaml
+

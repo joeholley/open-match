@@ -38,16 +38,16 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: om-mmforc-metrics
+  name: om-mmf-metrics
   labels:
     app: openmatch
-    component: mmforc
+    component: function 
     agent: opencensus
     destination: prometheus
 spec:
   selector:
     app: openmatch
-    component: mmforc
+    component: function 
   ports:
   - name: metrics
     targetPort: 9555
