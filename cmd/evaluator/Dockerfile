@@ -12,9 +12,11 @@ WORKDIR /go/src/github.com/GoogleCloudPlatform/open-match/cmd/evaluator/
 COPY . .
 RUN go get -d -v 
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo .
+RUN rm -f matchmaker_config.yaml
+RUN ln -s /etc/config/matchmaker_config.yaml .
 
 #FROM gcr.io/distroless/static
-FROM debian
-COPY --from=builder /go/src/github.com/GoogleCloudPlatform/open-match/cmd/evaluator/evaluator .
+##FROM debian
+##COPY --from=builder /go/src/github.com/GoogleCloudPlatform/open-match/cmd/evaluator/evaluator .
 
 CMD ["./evaluator"]

@@ -14,8 +14,8 @@ RUN rm -rf /go/src/github.com/golang/protobuf/
 # https://stackoverflow.com/a/39317180/3113674
 # TODO: Set these to the final branch name after RC approval.
 WORKDIR /go/src/github.com/GoogleCloudPlatform/open-match
-RUN svn export https://github.com/GoogleCloudPlatform/open-match/branches/040wip/internal
-RUN svn export https://github.com/GoogleCloudPlatform/open-match/branches/040wip/config
+RUN svn export https://github.com/joeholley/open-match/branches/gdcdemo/internal
+RUN svn export https://github.com/joeholley/open-match/branches/gdcdemo/config
 
 WORKDIR /go/src/github.com/GoogleCloudPlatform/open-match/cmd/mmforc/
 COPY . .
