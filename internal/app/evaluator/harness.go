@@ -57,13 +57,11 @@ var (
 	evLog = log.WithFields(evLogFields)
 
 	cfg    *viper.Viper
-	err    error
 	pool   *redis.Pool
 	dryrun bool
 )
 
-// InitializeApplication is a hook for the init() method in the main executable.
-func InitializeApplication() {
+func initializeApplication() {
 
 	// Parse commandline flags.
 	flag.BoolVar(&dryrun, "dryrun", false, "Print eval results, but do not take approval or rejection actions")
@@ -73,7 +71,7 @@ func InitializeApplication() {
 	log.AddHook(metrics.NewHook(EvaluatorLogLines, KeySeverity))
 
 	// Viper config management initialization
-	cfg, err = config.Read()
+	cfg, err := config.Read()
 	if err != nil {
 		evLog.WithFields(log.Fields{
 			"error": err.Error(),
@@ -84,23 +82,26 @@ func InitializeApplication() {
 	logging.ConfigureLogging(cfg)
 
 	// Get redis connection pool.
-	pool = redisHelpers.ConnectionPool(cfg)
+	pool, err = redisHelpers.ConnectionPool(cfg)
 
 	// Configure OpenCensus exporter to Prometheus
 	// metrics.ConfigureOpenCensusPrometheusExporter expects that every OpenCensus view you
 	// want to register is in an array, so append any views you want from other
 	// packages to a single array here.
-	ocEvaluatorViews := DefaultEvaluatorViews /
+	ocEvaluatorViews := DefaultEvaluatorViews
+	ocEvaluatorViews = append(ocEvaluatorViews, config.CfgVarCountView) // config loader view.
 
-		// Waiting on https://github.com/opencensus-integrations/redigo/pull/1
-		// ocEvaluatorViews = append(ocEvaluatorViews, redis.ObservabilityMetricViews...) // redis OpenCensus views.
-		evLog.WithFields(log.Fields{"viewscount": len(ocEvaluatorViews)}).Info("Loaded OpenCensus views")
+	// Waiting on https://github.com/opencensus-integrations/redigo/pull/1
+	// ocEvaluatorViews = append(ocEvaluatorViews, redis.ObservabilityMetricViews...) // redis OpenCensus views.
+	evLog.WithFields(log.Fields{"viewscount": len(ocEvaluatorViews)}).Info("Loaded OpenCensus views")
 	metrics.ConfigureOpenCensusPrometheusExporter(cfg, ocEvaluatorViews)
 
 }
 
 // RunApplication is a hook for the main() method in the main executable.
 func RunApplication() {
+	initializeApplication()
+
 	// TODO: implement robust cancellation logic.
 	ctx, cancel := context.WithCancel(context.Background())
 	_ = cancel
@@ -366,7 +367,7 @@ func evaluator(ctx context.Context) {
 			}
 
 			// TODO: dry this with the approved flow
-			evLog.Debug(" RENAME %v", proposedID)
+			evLog.Debug("RENAME ", proposedID)
 			_, err = redisConn.Do("RENAME", proposedID, backendID)
 			if err != nil {
 				evLog.Error("Failure to delete rejected proposal! ", err)
@@ -438,7 +439,7 @@ func stub(cfg *viper.Viper, pool *redis.Pool) ([]string, map[string][]int, map[i
 	if err != nil {
 		evLog.Println(err)
 	}
-	evLog.Debug("proposals = %+v\n", proposals)
+	evLog.Debug("proposals = ", proposals)
 
 	// This is a far cry from effecient but we expect a pretty small set of players under consideration
 	// at any given time
@@ -490,11 +491,11 @@ func stub(cfg *viper.Viper, pool *redis.Pool) ([]string, map[string][]int, map[i
 // TODO: this needs a complete overhaul in a 'real' graph search
 func chooseMatches(overloaded []int) ([]int, []int, error) {
 	// Super naive - take one overloaded match and approved it, reject all others.
-	evLog.Debug("overloaded = %+v\n", overloaded)
-	evLog.Debug("len(overloaded) = %+v\n", len(overloaded))
+	evLog.Debug("overloaded = ", overloaded)
+	evLog.Debug("len(overloaded) = ", len(overloaded))
 	if len(overloaded) > 0 {
-		evLog.Debug("overloaded[0:0] = %+v\n", overloaded[0:0])
-		evLog.Debug("overloaded[1:] = %+v\n", overloaded[1:])
+		evLog.Debug("overloaded[0:0] = ", overloaded[0:0])
+		evLog.Debug("overloaded[1:] = ", overloaded[1:])
 		return overloaded[0:1], overloaded[1:], nil
 	}
 	return []int{}, overloaded, nil
