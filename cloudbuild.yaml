@@ -43,62 +43,75 @@
 # If a build step has intermediate files that need to be persisted for a future step then use volumes.
 #    An example of this is the go-vol which is where the pkg/ data for go mod is stored.
 #    More information here: https://cloud.google.com/cloud-build/docs/build-config#build_steps
-# 
+# A build step is basically a docker image that is tuned for Cloud Build,
+#    https://github.com/GoogleCloudPlatform/cloud-builders/tree/master/go
 
-# https://github.com/GoogleCloudPlatform/cloud-builders/tree/master/go
 steps:
-# TODO: Re-enable the docker image targets once they become hermetic.
+- id: 'Docker Image: open-match-base-build'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'open-match-base-build', '-f', 'Dockerfile.base-build', '.']
+  waitFor: ['-']
 
-#- id: 'Docker Image: backendapi'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-backendapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/backendapi']
-#  waitFor: ['-']
+- id: 'Docker Image: backendapi'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-backendapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/backendapi']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: frontendapi'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-frontendapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/frontendapi']
-#  waitFor: ['-']
+- id: 'Docker Image: frontendapi'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-frontendapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/frontendapi']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: mmforc'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmforc:${_OM_VERSION}-${SHORT_SHA}', 'cmd/mmforc']
-#  waitFor: ['-']
+- id: 'Docker Image: mmforc'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmforc:${_OM_VERSION}-${SHORT_SHA}', 'cmd/mmforc']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: mmlogicapi'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmlogicapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/mmlogicapi']
-#  waitFor: ['-']
+- id: 'Docker Image: mmlogicapi'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmlogicapi:${_OM_VERSION}-${SHORT_SHA}', 'cmd/mmlogicapi']
+  waitFor: ['Docker Image: open-match-base-build']
 
-# TODO: This image does not build.
-#- id: 'Docker Image: Evaluator Simple'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-evaluator-simple:${_OM_VERSION}-${SHORT_SHA}', 'examples/evaluators/golang/simple']
-#  waitFor: ['-']
+- id: 'Docker Image: Evaluator Simple'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-evaluator-simple:${_OM_VERSION}-${SHORT_SHA}', 'examples/evaluators/golang/simple']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: openmatch-cs-func-simple'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-cs-func-simple:${_OM_VERSION}-${SHORT_SHA}', 'examples/functions/golang/manual-simple']
-#  waitFor: ['-']
+- id: 'Docker Image: openmatch-mmf-cs-mmlogic-simple'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmf-cs-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}', '.']
+  dir: 'examples/functions/csharp/simple'
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: openmatch-go-func-simple'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-go-func-simple:${_OM_VERSION}-${SHORT_SHA}', 'examples/functions/golang/manual-simple']
-#  waitFor: ['-']
+- id: 'Docker Image: openmatch-mmf-go-mmlogic-simple'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmf-go-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}', '-f', 'examples/functions/golang/manual-simple/Dockerfile', '.']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: backendclient'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-backendclient:${_OM_VERSION}-${SHORT_SHA}', 'examples/backendclient']
-#  waitFor: ['-']
+- id: 'Docker Image: openmatch-mmf-php-mmlogic-simple'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmf-php-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}', '-f', 'examples/functions/php/mmlogic-simple/Dockerfile', '.']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: clientloadgen'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-clientloadgen:${_OM_VERSION}-${SHORT_SHA}', 'test/cmd/clientloadgen']
-#  waitFor: ['-']
+- id: 'Docker Image: openmatch-mmf-py3-mmlogic-simple'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-mmf-py3-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}', '-f', 'examples/functions/python3/mmlogic-simple/Dockerfile', '.']
+  waitFor: ['Docker Image: open-match-base-build']
 
-#- id: 'Docker Image: frontendclient'
-#  name: gcr.io/cloud-builders/docker
-#  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-frontendclient:${_OM_VERSION}-${SHORT_SHA}', 'test/cmd/frontendclient']
-#  waitFor: ['-']
+- id: 'Docker Image: backendclient'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-backendclient:${_OM_VERSION}-${SHORT_SHA}', 'examples/backendclient']
+  waitFor: ['Docker Image: open-match-base-build']
+
+- id: 'Docker Image: clientloadgen'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-clientloadgen:${_OM_VERSION}-${SHORT_SHA}', 'test/cmd/clientloadgen']
+  waitFor: ['Docker Image: open-match-base-build']
+
+- id: 'Docker Image: frontendclient'
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/openmatch-frontendclient:${_OM_VERSION}-${SHORT_SHA}', 'test/cmd/frontendclient']
+  waitFor: ['Docker Image: open-match-base-build']
 
 # Cannot enable, produces lots of errors but can be useful.
 #- id: 'Lint: YAML Files'
@@ -111,157 +124,130 @@ steps:
   args: ['install/yaml/01-redis.yaml', 'install/yaml/02-open-match.yaml']
   waitFor: ['-']
 
-- id: 'Setup: go mod'
+- id: 'Setup: Pull Dependencies'
   name: golang
   env: ['GO111MODULE=on', 'CGO_ENABLED=0']
-  args: ['go', 'mod', 'init', 'github.com/GoogleCloudPlatform/open-match']
+  args: ['go', 'mod', 'download']
   volumes:
   - name: 'go-vol'
     path: '/go'
   waitFor: ['-']
 
-- id: 'Setup: Pull Dependencies'
+- id: 'Lint: Formatting'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
-  args: ['go', 'mod', 'tidy']
-  volumes:
-  - name: 'go-vol'
-    path: '/go'
-  waitFor: ['Setup: go mod']
-
-- id: 'Setup: Fix k8s.io/api Dependency'
-  name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
-  args: ['go', 'mod', 'edit', '-require', 'k8s.io/api@v0.0.0-20190111032252-67edc246be36']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
+  args: ['go', 'fmt', './...']
   volumes:
   - name: 'go-vol'
     path: '/go'
   waitFor: ['Setup: Pull Dependencies']
 
-- id: 'Setup: Vendor Dependencies'
-  name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
-  args: ['go', 'mod', 'vendor']
-  volumes:
-  - name: 'go-vol'
-    path: '/go'
-  waitFor: ['Setup: Fix k8s.io/api Dependency']
-
-- id: 'Lint: Formatting'
-  name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
-  args: ['go', 'fmt', './...']
-  volumes:
-  - name: 'go-vol'
-    path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
-
 - id: 'Lint: Vetting'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'vet', './...']
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Test: 10x with Race Detection and Coverage'
   name: golang
-  env: ['GO111MODULE=on']
+  env: ['GO111MODULE=on', 'GOPROXY=off']
   args: ['go', 'test', './...', '-race', '-test.count', '10', '-cover']
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: All Binaries'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', './...']
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: cmd/backendapi/backendapi'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'cmd/backendapi/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: cmd/frontendapi/frontendapi'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'cmd/frontendapi/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: cmd/mmforc/mmforc'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'cmd/mmforc/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: cmd/mmlogicapi/mmlogicapi'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'cmd/mmlogicapi/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: examples/functions/golang/manual-simple'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'examples/functions/golang/manual-simple/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: examples/backendclient'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'examples/backendclient/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: test/cmd/clientloadgen'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'test/cmd/clientloadgen/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 - id: 'Build: test/cmd/frontendclient'
   name: golang
-  env: ['GO111MODULE=on', 'CGO_ENABLED=0']
+  env: ['GO111MODULE=on', 'GOPROXY=off', 'CGO_ENABLED=0']
   args: ['go', 'build', '-a', '-installsuffix', 'cgo', '.']
   dir: 'test/cmd/frontendclient/'
   volumes:
   - name: 'go-vol'
     path: '/go'
-  waitFor: ['Setup: Vendor Dependencies']
+  waitFor: ['Setup: Pull Dependencies']
 
 artifacts:
     objects:
@@ -275,21 +261,21 @@ artifacts:
             - examples/backendclient/backendclient
             - test/cmd/clientloadgen/clientloadgen
             - test/cmd/frontendclient/frontendclient
-# TODO: Enable when the Dockerfiles are hermetic.
 images:
-#- 'gcr.io/$PROJECT_ID/openmatch-backendapi:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-frontendapi:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-mmforc:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-mmlogicapi:${_OM_VERSION}-${SHORT_SHA}'
-# Does not build
-#- 'gcr.io/$PROJECT_ID/openmatch-evaluator-simple:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-cs-func-simple:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-go-func-simple:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-backendclient:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-clientloadgen:${_OM_VERSION}-${SHORT_SHA}'
-#- 'gcr.io/$PROJECT_ID/openmatch-frontendclient:${_OM_VERSION}-${SHORT_SHA}'
-#substitutions:
-#    _OM_VERSION: 0.4.0
+- 'gcr.io/$PROJECT_ID/openmatch-backendapi:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-frontendapi:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmforc:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmlogicapi:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-evaluator-simple:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmf-cs-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmf-go-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmf-php-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-mmf-py3-mmlogic-simple:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-backendclient:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-clientloadgen:${_OM_VERSION}-${SHORT_SHA}'
+- 'gcr.io/$PROJECT_ID/openmatch-frontendclient:${_OM_VERSION}-${SHORT_SHA}'
+substitutions:
+    _OM_VERSION: 0.4.0
 logsBucket: 'gs://open-match-build-logs/'
 options:
   sourceProvenanceHash: ['SHA256']
@@ -306,3 +292,4 @@ timeout: 1200s
 #
 # Consolidate many of these build steps via Makefile.
 # Caching of dependencies is a serious problem. Cloud Build does not complete within 20 minutes!
+
