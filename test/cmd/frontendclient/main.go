@@ -25,41 +25,37 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/open-match/internal/pb"
 	"github.com/GoogleCloudPlatform/open-match/test/cmd/frontendclient/player"
-	frontend "github.com/GoogleCloudPlatform/open-match/test/cmd/frontendclient/proto"
 	"github.com/gobs/pretty"
 	"google.golang.org/grpc"
 )
 
 var (
-	numPlayers int
-	connect    bool
-	noDelete   bool
-	server     string
-	err        error
+	numPlayers = flag.Int("numplayers", 1, "number of players to generate and group together")
+	connect    = flag.Bool("connect", false, "Set to true to try to connect to the assigned server over UDP")
+	noDelete   = flag.Bool("no-delete", false, "Set to true to prevent deletion of request and player info when done")
+	server     = flag.String("frontend", "om-frontendapi", "Hostname or IP of the Open Match frontend")
 )
 
 func main() {
 	// Get command line flags
-	flag.IntVar(&numPlayers, "numplayers", 1, "number of players to generate and group together")
-	flag.BoolVar(&connect, "connect", false, "Set to true to try to connect to the assigned server over UDP")
-	flag.BoolVar(&noDelete, "no-delete", false, "Set to true to prevent deletion of request and player info when done")
-	flag.StringVar(&server, "frontend", "om-frontendapi", "Hostname or IP of the Open Match frontend")
 	flag.Parse()
 	log.Print("Parsing flags:")
-	log.Printf(" [flags] Connecting to frontend API at %v", server)
-	log.Printf(" [flags] Generating %d players", numPlayers)
-	log.Printf(" [flags] Attempt connect to DGS? %v", connect)
-	log.Printf(" [flags] Leave player and request in state storage? %v", noDelete)
+	log.Printf(" [flags] Connecting to frontend API at %v", *server)
+	log.Printf(" [flags] Generating %d players", *numPlayers)
+	log.Printf(" [flags] Attempt connect to DGS? %v", *connect)
+	log.Printf(" [flags] Leave player and request in state storage? %v", *noDelete)
 
 	// Connect gRPC client
-	ip, err := net.LookupHost(server)
+	ip, err := net.LookupHost(*server)
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect: %s", err.Error())
 	}
-	client := frontend.NewFrontendClient(conn)
+	client := pb.NewFrontendClient(conn)
 	log.Println("API client connected!")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -89,19 +85,19 @@ func main() {
 	// ID to receive updates.
 
 	// Empty group to fill and then send the CreateRequest gRPC endpoint
-	g := &frontend.Player{
+	g := &pb.Player{
 		Id:         "",
 		Properties: "",
 	}
 
 	// Generate players for the group
 	player.New() // Player generator init
-	players := make([]*frontend.Player, numPlayers)
-	resultsChan := make(chan frontend.Player)
-	for i := 0; i < numPlayers; i++ {
+	players := make([]*pb.Player, *numPlayers)
+	resultsChan := make(chan pb.Player)
+	for i := 0; i < *numPlayers; i++ {
 
 		// Var init
-		players[i] = &frontend.Player{}
+		players[i] = &pb.Player{}
 		playerData := make(map[string]interface{})
 
 		// Generate a new player
@@ -113,14 +109,14 @@ func main() {
 		go waitForResults(resultsChan, responseStream)
 		log.Printf("Generated player \"%v\": %v", players[i].Id, players[i].Properties)
 
-		if numPlayers > 1 {
+		if *numPlayers > 1 {
 			// Add the new player to the mock 'aggregate' player to represent the group
 			groupPlayer(g, players[i].Id, playerData)
 		}
 
 	}
 
-	if numPlayers > 1 {
+	if *numPlayers > 1 {
 		g.Id = g.Id[:len(g.Id)-1] // Remove trailing whitespace
 		log.Printf("Finished grouping players into mock 'aggregate' player: \"%v\"", g.Id)
 	} else {
@@ -130,8 +126,8 @@ func main() {
 	// Test CreateRequest
 	log.Println("Testing CreatePlayer")
 	results, err := client.CreatePlayer(ctx, g)
-	if !noDelete {
-		if numPlayers > 1 {
+	if !*noDelete {
+		if *numPlayers > 1 {
 			defer cleanup(client, g, "group")
 		}
 		for _, p := range players {
@@ -143,29 +139,57 @@ func main() {
 	}
 	log.Printf("CreateRequest() returned %v", results)
 
-	// Get updates for each player and display them the 'q' key is pressed.
-	quitChan := make(chan bool)
-	go waitForQuit(quitChan)
-	quit := false
-	for !quit {
+	// Get updates for each player and display them until the 'enter' key is pressed.
+	quitChan := make(chan struct{})
+	go func(q chan<- struct{}) {
+		r := bufio.NewReader(os.Stdin)
+		r.ReadString('\n')
+		close(q)
+	}(quitChan)
+L:
+	for {
 		log.Println("Waiting for results from Open Match...")
 		log.Println("**Press Enter to disconnect from Open Match frontend**")
 
 		select {
-		case a := <-resultsChan:
-			pretty.PrettyPrint(a)
 		case <-quitChan:
 			log.Println("Disconnect from Frontend requested")
 			cancel() // Quit listening for results.
-			quit = true
+			break L
+
+		case a := <-resultsChan:
+			pretty.PrettyPrint(a)
+			if a.Pool != "" {
+				players[0].Pool = a.Pool
+			}
+			if a.Status != "" {
+				players[0].Status = a.Status
+			}
+			if a.Error != "" {
+				players[0].Error = a.Error
+			}
+			if a.Properties != "" {
+				players[0].Properties = a.Properties
+			}
+			if a.Assignment != "" {
+				players[0].Assignment = a.Assignment
+			}
 		}
 	}
 
 	// Assignment received, run a single dumb UDP client that just prints to the
 	// screen the contents of the packets it recieves
 	player := players[0]
-	if connect && player.Assignment != "" {
-		err = udpClient(context.Background(), player.Assignment)
+	if *connect && player.Assignment != "" {
+		udpCtx, stopUDP := context.WithCancel(context.Background())
+
+		cmdChan := make(chan string)
+		go func() {
+			waitForInput(cmdChan)
+			stopUDP()
+		}()
+
+		err = udpClient(udpCtx, player.Assignment, player.Id, cmdChan)
 		if err != nil {
 			panic(err)
 		}
@@ -174,15 +198,8 @@ func main() {
 	return
 }
 
-func waitForQuit(quitChan chan<- bool) {
-	// Don't do anything with the input; any input means to quit.
-	reader := bufio.NewReader(os.Stdin)
-	_, _ = reader.ReadString('\n')
-	quitChan <- true
-}
-
 // waitForResults loops until the context is cancelled, looking for assignment/status/error updates for a player.
-func waitForResults(resultsChan chan frontend.Player, stream frontend.Frontend_GetUpdatesClient) {
+func waitForResults(resultsChan chan pb.Player, stream pb.Frontend_GetUpdatesClient) {
 	for {
 		a, err := stream.Recv()
 		if err == io.EOF {
@@ -193,8 +210,7 @@ func waitForResults(resultsChan chan frontend.Player, stream frontend.Frontend_G
 			if strings.HasSuffix(err.Error(), "context canceled") {
 				break
 			}
-			log.Println("Error encountered")
-			log.Printf("Error reading stream for GetAssignments(_) = _, %v", err)
+			log.Printf("Error reading stream for GetAssignments(_) = _, %v\n", err)
 			break
 		}
 		log.Println("Result recieved from Open Match!")
@@ -202,58 +218,103 @@ func waitForResults(resultsChan chan frontend.Player, stream frontend.Frontend_G
 	}
 }
 
-func udpClient(ctx context.Context, address string) (err error) {
-	// Resolve address
+func waitForInput(cmdChan chan string) {
+	helpText := `(Type commands; start it with "<-" to send to server; type "QUIT" to terminate communication and exit; messages received from server start with "->";)`
+	fmt.Println(helpText)
+
+	for {
+		r := bufio.NewReader(os.Stdin)
+		line, err := r.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+
+		s := strings.TrimSpace(line)
+		switch {
+		case strings.ToUpper(s) == "QUIT":
+			return
+
+		case strings.HasPrefix(s, "<-"):
+			cmd := strings.TrimSpace(strings.TrimPrefix(s, "<-"))
+			cmdChan <- cmd
+
+		default:
+			fmt.Println(helpText)
+		}
+	}
+}
+
+func udpClient(ctx context.Context, address, playerID string, cmdChan <-chan string) (err error) {
+	log.Printf("Connecting to udp-server at %s...\n", address)
 	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return
 	}
-
-	// Connect
 	conn, err := net.DialUDP("udp", nil, raddr)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	// Subscribe and loop, printing received timestamps
-	doneChan := make(chan error, 1)
-	go func() {
-		// Send one packet to servers so it will start sending us timestamps
-		log.Println("Connecting...")
-		b := bytes.NewBufferString("subscribe")
-		_, err := io.Copy(conn, b)
-		if err != nil {
-			doneChan <- err
-			return
-		}
+	errChan := make(chan error, 2)
+	doneChan := make(chan struct{})
 
+	go func() {
 		// Loop forever, reading
 		buffer := make([]byte, 1024)
 		for {
-			n, _, err := conn.ReadFrom(buffer)
-			if err != nil {
-				doneChan <- err
+			select {
+			case <-doneChan:
 				return
+			default:
+				n, _, err := conn.ReadFrom(buffer)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				s := string(buffer[:n])
+				fmt.Println("->", s)
 			}
-
-			log.Printf("received %v\n", string(buffer[:n]))
-
 		}
 	}()
 
-	// Exit if listening loop has an error or context is cancelled
+	go func() {
+		// Send the user input to server
+		for {
+			select {
+			case <-doneChan:
+				return
+			case cmd := <-cmdChan:
+				msg := cmd
+				if !strings.HasPrefix(cmd, playerID) {
+					msg = playerID + " " + cmd
+				}
+				log.Printf("sending \"%v\"", msg)
+				_, err := conn.Write([]byte(msg))
+				if err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}
+	}()
+
+	// Wait for error or context cancelation
 	select {
 	case <-ctx.Done():
-		log.Println("context cancelled")
-		err = ctx.Err()
-	case err = <-doneChan:
+		log.Println("UDP client context cancelled")
+		if ctx.Err() != context.Canceled {
+			err = ctx.Err()
+		}
+	case err = <-errChan:
 	}
 
+	// Stop reading and wiriting goroutines
+	close(doneChan)
 	return
 }
 
-func cleanup(client frontend.FrontendClient, g *frontend.Player, kind string) {
+func cleanup(client pb.FrontendClient, g *pb.Player, kind string) {
 	// Test DeleteRequest
 	results, err := client.DeletePlayer(context.Background(), g)
 	if err != nil {
@@ -262,7 +323,7 @@ func cleanup(client frontend.FrontendClient, g *frontend.Player, kind string) {
 	log.Printf("Deleting Request for %v %v: %v", kind, g.Id, results)
 }
 
-func groupPlayer(g *frontend.Player, playerID string, playerData map[string]interface{}) error {
+func groupPlayer(g *pb.Player, playerID string, playerData map[string]interface{}) error {
 	// Concatinate this player to the existing group
 	g.Id = g.Id + playerID + " "
 
